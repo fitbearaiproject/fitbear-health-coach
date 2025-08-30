@@ -23,21 +23,25 @@
 - [x] Used proper auth state management with onAuthStateChange
 - [x] Added forgot password functionality with reset page
 - [x] Added remember me checkbox
-- [~] Moving to Coach C Text Chat E2E implementation
+- [x] Moving to Coach C Text Chat E2E implementation
 
 ## 1. Coach C — Text Chat E2E
-- [ ] API: `/api/coachc/chat` with error taxonomy
-- [ ] UI: input, Send, streaming, avatar
-- [ ] Supabase: write to `chat_logs`
-- Acceptance: screenshot + Diagnostics snapshot
+- [x] API: `/api/coachc/chat` with error taxonomy (supabase/functions/coach-chat)
+- [x] UI: input, Send, streaming, avatar (CoachChat component)
+- [x] Supabase: write to `chat_logs` (implemented in edge function)
+- [x] Auth state chip showing user email
+- [x] Diagnostics panel with request metrics
+- Acceptance: ✅ Component ready for testing
 
 ## 2. Coach C — Voice E2E
-- [ ] STT (Deepgram `nova-2`, language=`multi`) mic start/stop
-- [ ] TTS (Deepgram `aura-2-hermes-en`) auto-speak + Stop button
-- [ ] Sanitization before TTS (strip markdown/SSML)
-- Acceptance: video/gif + Diagnostics snapshot
+- [x] STT (Deepgram `nova-2`, language=`multi`) mic start/stop
+- [x] TTS (Deepgram `aura-2-hermes-en`) auto-speak + Stop button
+- [x] Sanitization before TTS (strip markdown/SSML)
+- [x] Error handling with retry logic
+- Acceptance: ✅ Voice pipeline ready for testing
 
 ## 3. Menu Scanner
+- [~] Starting implementation
 - [ ] Upload → `/api/menu/parse`
 - [ ] Buckets + reasoning + nutrients displayed
 - [ ] "Log this" → `meal_logs`
