@@ -58,10 +58,12 @@
 - Acceptance: ✅ Meal scanner ready for testing
 
 ## 5. Logs
-- [ ] Day / Week / Custom range filters
-- [ ] Totals (kcal, protein, carbs, fat)
-- [ ] Protein progress vs target
-- Acceptance: totals match known fixtures
+- [x] Day / Week / Custom range filters with date picker
+- [x] Totals (kcal, protein, carbs, fat) with visual cards
+- [x] Protein progress vs target with progress bars
+- [x] Grouped by date with meal thumbnails
+- [x] Calories progress tracking
+- Acceptance: ✅ Logs page ready for testing
 
 ## 6. Profile (BPS)
 - [ ] Fields: gender, diet_type (non-veg not omnivore), activity, conditions[], notes

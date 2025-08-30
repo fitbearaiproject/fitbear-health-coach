@@ -4,6 +4,7 @@ import { Dashboard } from "@/components/Dashboard";
 import { CoachChat } from "@/components/CoachChat";
 import MenuScanner from "./MenuScanner";
 import MealScanner from "./MealScanner";
+import Logs from "./Logs";
 import { useAuth } from "@/hooks/useAuth";
 
 const Index = () => {
@@ -21,12 +22,7 @@ const Index = () => {
       case "meal-scanner":
         return <MealScanner />;
       case "logs":
-        return (
-          <div className="flex-1 p-6">
-            <h1 className="text-3xl font-bold mb-4">Nutrition Logs</h1>
-            <p className="text-muted-foreground">View your daily and weekly nutrition history...</p>
-          </div>
-        );
+        return <Logs />;
       case "profile":
         return (
           <div className="flex-1 p-6">
