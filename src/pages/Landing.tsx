@@ -52,7 +52,7 @@ export default function Landing({ onGetStarted }: LandingProps) {
         <div className="container mx-auto max-w-6xl">
           <div className="text-center space-y-8">
             <div className="space-y-6">
-              <h1 className="text-4xl md:text-6xl font-bold leading-tight">
+              <h1 className="text-3xl md:text-5xl font-bold leading-tight">
                 <span className="gradient-text">Coach C</span> guides you on your{" "}
                 <span className="text-primary">fitness and nutrition journey</span>{" "}
                 based on The Fit Bear philosophy - via chat and voice.
