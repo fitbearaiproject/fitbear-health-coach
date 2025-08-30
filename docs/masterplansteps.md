@@ -94,7 +94,14 @@
 - [x] Critical: All user data (profiles, meal_logs, chat_logs, etc.) restricted to owners only
 - Acceptance: ✅ RLS policies verified and security validated
 
-## 10. Deployment
+## 10. Landing Page
+- [x] Comprehensive landing page with all specified sections
+- [x] Updated logo throughout app (navigation + landing)
+- [x] SEO optimized with proper meta tags and structured data
+- [x] Updated routing to show landing for unauthenticated users
+- Acceptance: ✅ Landing page ready with new branding
+
+## 11. Deployment
 - [ ] Production build
 - [ ] Env configured on host
 - [ ] Smoke test (Chat + Scanners + Logs)

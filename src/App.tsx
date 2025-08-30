@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
+import Landing from "./pages/Landing";
 import { Loader2 } from "lucide-react";
 
 const App = () => {
@@ -25,9 +26,10 @@ const App = () => {
       <Toaster />
       <Sonner />
       <Routes>
-        <Route path="/auth" element={user ? <Navigate to="/" /> : <Auth />} />
-        <Route path="/reset-password" element={user ? <Navigate to="/" /> : <ResetPassword />} />
-        <Route path="/" element={user ? <Index /> : <Navigate to="/auth" />} />
+        <Route path="/auth" element={user ? <Navigate to="/dashboard" /> : <Auth />} />
+        <Route path="/reset-password" element={user ? <Navigate to="/dashboard" /> : <ResetPassword />} />
+        <Route path="/dashboard" element={user ? <Index /> : <Navigate to="/auth" />} />
+        <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Landing onGetStarted={() => window.location.href = '/auth'} />} />
         <Route path="*" element={user ? <NotFound /> : <Navigate to="/auth" />} />
       </Routes>
     </TooltipProvider>
