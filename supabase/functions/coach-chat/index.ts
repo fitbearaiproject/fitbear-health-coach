@@ -12,6 +12,9 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const requestId = crypto.randomUUID();
+  const startTime = Date.now();
+
   try {
     const { message, userId } = await req.json();
     
@@ -50,49 +53,115 @@ serve(async (req) => {
       }
     }
 
-    // Prepare system prompt for Coach C
-    const systemPrompt = `You are Coach C, an AI fitness and nutrition coach based on "The Fit Bear" philosophy by Charan Panjwani. 
+    // Updated Coach C system prompt with the exact prompt from user
+    const systemPrompt = `You are Coach C, the voice and personality of The Fit Bear — Charan Panjwani.
+You are a science-backed, habit-centered Indian-first health, fitness, and nutrition coach.
+Your guiding philosophy: "Own Your Fitness — sustainable progress, not perfection."
 
-Core Principles:
-- Focus on sustainable, enjoyable fitness and nutrition
-- Emphasize strength training and balanced nutrition
-- Promote a positive relationship with food and exercise
-- Always consider the user's individual context and goals
-- Be encouraging, practical, and evidence-based
+🎭 Persona
+Friendly, supportive, practical — like a buddy who knows health deeply but never lectures.
+Always reply in clear English (never Hinglish).
+Conversational tone, warm but concise. Use everyday Indian context when relevant.
+You are empathetic and encouraging. Celebrate small wins, reduce guilt.
 
-CRITICAL: Always respond in English only. Never use Hinglish or mix Hindi words. Keep responses conversational but professional.
+🧭 Core Role
+Help users make better daily health choices around food, exercise, sleep, hydration, stress, and lifestyle.
+Prioritize practical Indian swaps (tawa vs butter, dal without tadka, grilled vs fried).
+Quantify in Indian household units (katori, roti count/diameter, ladle, thali portions).
+Adapt advice based on user's BPS profile + targets stored in Supabase.
+
+📋 Knowledge Boundaries
+Provide general wellness guidance, not medical advice.
+Never diagnose or prescribe medications.
+If user describes severe symptoms → recommend consulting a clinician.
+If user asks for something unsafe (e.g., extreme diets, overtraining) → gently correct and explain risks.
+
+🧩 Context Handling
+Maintain conversation memory within a session.
+When user asks a follow-up, remember what was previously discussed.
+When giving recommendations, always anchor to the user's profile.
+
+🥗 Food Guidance
+Recommend balanced thali-style meals with protein focus.
+Suggest high-protein Indian vegetarian options (paneer, lentils, sprouts, soy, curd).
+For non-veg/pescatarian users: include eggs, fish, chicken, etc.
+Provide approximate macros + calories when possible.
+Suggest healthy accompaniments (salads, chutneys, dahi).
+Flag potential risks based on conditions.
+
+💪 Fitness Guidance
+Suggest short, practical home/office workouts.
+Adapt intensity to activity level + restrictions.
+Encourage movement snacks: stairs, walking breaks, stretches.
+
+💡 Nudges & Motivation
+Reinforce habits: hydration reminders, portion control, consistency > intensity.
+Celebrate user's effort.
+Give 1–2 actionable next steps, not long lectures.
+
+🛡 Output Format
+Always respond in English only, structured like this:
+Direct answer first — clear, concise.
+Reasoning / why it works — 2–3 short bullet points.
+Practical tip or nudge — one small, encouraging next step.
+Safety reminder if relevant (wellness only, not medical advice).
 
 ${userContext}
 
 Provide personalized advice based on the user's profile above. Be specific about nutrition recommendations considering their diet type, health conditions, and targets.`;
 
-    // Call Gemini API
-    const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${Deno.env.get('GOOGLE_API_KEY')}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: systemPrompt }
-            ]
+    const promptLen = message.length;
+
+    // Call Gemini API with retry logic
+    let geminiResponse;
+    let retryCount = 0;
+    const maxRetries = 1;
+
+    while (retryCount <= maxRetries) {
+      try {
+        geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${Deno.env.get('GOOGLE_API_KEY')}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
           },
-          {
-            parts: [
-              { text: message }
-            ]
-          }
-        ],
-        generationConfig: {
-          temperature: 0.7,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 1024,
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: systemPrompt }
+                ]
+              },
+              {
+                parts: [
+                  { text: message }
+                ]
+              }
+            ],
+            generationConfig: {
+              temperature: 0.7,
+              topK: 40,
+              topP: 0.95,
+              maxOutputTokens: 1024,
+            }
+          }),
+        });
+
+        if (geminiResponse.status === 429 && retryCount < maxRetries) {
+          retryCount++;
+          await new Promise(resolve => setTimeout(resolve, 2000 * retryCount));
+          continue;
         }
-      }),
-    });
+
+        break;
+      } catch (error) {
+        if (retryCount < maxRetries) {
+          retryCount++;
+          await new Promise(resolve => setTimeout(resolve, 2000 * retryCount));
+          continue;
+        }
+        throw error;
+      }
+    }
 
     const geminiData = await geminiResponse.json();
     
@@ -101,6 +170,8 @@ Provide personalized advice based on the user's profile above. Be specific about
     }
 
     const reply = geminiData.candidates[0].content.parts[0].text;
+    const responseLen = reply.length;
+    const latencyMs = Date.now() - startTime;
     
     // Sanitize text for TTS (remove markdown formatting)
     const sanitizedReply = reply
@@ -108,26 +179,58 @@ Provide personalized advice based on the user's profile above. Be specific about
       .replace(/\*/g, '')
       .replace(/#{1,6}\s/g, '')
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-      .replace(/`([^`]+)`/g, '$1');
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/<[^>]*>/g, ''); // Remove any HTML/SSML tags
 
-    // Log the conversation
+    // Log the conversation with diagnostics
     await supabase.from('chat_logs').insert([
-      { user_id: userId, role: 'user', content: message },
-      { user_id: userId, role: 'assistant', content: reply }
+      { 
+        user_id: userId, 
+        role: 'user', 
+        content: message,
+        message_id: requestId,
+        prompt_len: promptLen,
+        model: 'gemini-2.0-flash-exp'
+      },
+      { 
+        user_id: userId, 
+        role: 'assistant', 
+        content: reply,
+        message_id: requestId,
+        response_len: responseLen,
+        latency_ms: latencyMs,
+        model: 'gemini-2.0-flash-exp'
+      }
     ]);
 
     return new Response(
       JSON.stringify({ 
-        reply: sanitizedReply,
-        originalReply: reply 
+        message_id: requestId,
+        text: sanitizedReply,
+        originalReply: reply,
+        model: 'gemini-2.0-flash-exp',
+        tokens_in: promptLen,
+        tokens_out: responseLen,
+        latency_ms: latencyMs
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
     console.error('Error in coach-chat function:', error);
+    const latencyMs = Date.now() - startTime;
+    
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        message_id: requestId,
+        latency_ms: latencyMs,
+        error_class: error.message.includes('API key') || error.message.includes('auth') ? 'Auth' :
+                     error.message.includes('429') ? 'RateLimit' :
+                     error.message.includes('network') || error.message.includes('fetch') ? 'Network' :
+                     error.message.includes('required') || error.message.includes('validation') ? 'DataContract' :
+                     'Logic'
+      }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

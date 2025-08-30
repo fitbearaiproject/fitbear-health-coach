@@ -11,6 +11,9 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const requestId = crypto.randomUUID();
+  const startTime = Date.now();
+
   try {
     const { audio } = await req.json();
     
@@ -21,7 +24,7 @@ serve(async (req) => {
     // Convert base64 to binary
     const binaryAudio = Uint8Array.from(atob(audio), c => c.charCodeAt(0));
 
-    // Call Deepgram STT API
+    // Call Deepgram STT API with nova-2 model and multi-language support
     const response = await fetch('https://api.deepgram.com/v1/listen?model=nova-2&language=multi&smart_format=true', {
       method: 'POST',
       headers: {
@@ -43,16 +46,36 @@ serve(async (req) => {
     }
 
     const transcript = result.results.channels[0].alternatives[0].transcript;
+    const confidence = result.results.channels[0].alternatives[0].confidence || 0;
+    const detectedLanguage = result.results.channels[0].detected_language || 'unknown';
+    const latencyMs = Date.now() - startTime;
 
     return new Response(
-      JSON.stringify({ transcript }),
+      JSON.stringify({ 
+        transcript,
+        confidence,
+        detected_language: detectedLanguage,
+        latency_ms: latencyMs,
+        request_id: requestId
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
     console.error('Error in deepgram-stt function:', error);
+    const latencyMs = Date.now() - startTime;
+    
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        request_id: requestId,
+        latency_ms: latencyMs,
+        error_class: error.message.includes('API key') || error.message.includes('auth') ? 'Auth' :
+                     error.message.includes('429') ? 'RateLimit' :
+                     error.message.includes('network') || error.message.includes('fetch') ? 'Network' :
+                     error.message.includes('required') || error.message.includes('validation') ? 'DataContract' :
+                     'Logic'
+      }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

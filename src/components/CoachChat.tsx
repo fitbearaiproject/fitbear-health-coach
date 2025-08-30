@@ -3,15 +3,33 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Mic, MicOff, Volume2, VolumeX, Square } from "lucide-react";
+import { Mic, MicOff, Volume2, VolumeX, Square, ChevronDown, Activity, User } from "lucide-react";
 
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+}
+
+interface DiagnosticData {
+  request_id?: string;
+  endpoint?: string;
+  status?: number;
+  latency_ms?: number;
+  tokens_in?: number;
+  tokens_out?: number;
+  retry_count?: number;
+  error_class?: string;
+  error_cause?: string;
+  stt_language?: string;
+  stt_confidence?: number;
+  tts_voice?: string;
+  model?: string;
 }
 
 interface CoachChatProps {
@@ -25,12 +43,43 @@ export function CoachChat({ userId }: CoachChatProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [authStatus, setAuthStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading');
+  const [userEmail, setUserEmail] = useState<string>('');
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [lastDiagnostics, setLastDiagnostics] = useState<DiagnosticData>({});
   
   const { toast } = useToast();
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+
+  // Check auth status
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setAuthStatus('authenticated');
+        setUserEmail(session.user.email || '');
+      } else {
+        setAuthStatus('unauthenticated');
+      }
+    };
+
+    checkAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        setAuthStatus('authenticated');
+        setUserEmail(session.user.email || '');
+      } else {
+        setAuthStatus('unauthenticated');
+        setUserEmail('');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -51,7 +100,16 @@ export function CoachChat({ userId }: CoachChatProps) {
   }, []);
 
   const handleSendMessage = async (messageText: string) => {
-    if (!messageText.trim() || !userId) return;
+    if (!messageText.trim()) return;
+    
+    if (authStatus !== 'authenticated') {
+      toast({
+        title: "Authentication Required",
+        description: "Please sign in to chat with Coach C",
+        variant: "destructive",
+      });
+      return;
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -64,40 +122,86 @@ export function CoachChat({ userId }: CoachChatProps) {
     setInputValue("");
     setIsLoading(true);
 
-    try {
-      const { data, error } = await supabase.functions.invoke('coach-chat', {
-        body: {
-          message: messageText,
-          userId: userId
+    let retryCount = 0;
+    const maxRetries = 1;
+    
+    while (retryCount <= maxRetries) {
+      try {
+        const { data, error } = await supabase.functions.invoke('coach-chat', {
+          body: {
+            message: messageText,
+            userId: userId
+          }
+        });
+
+        if (error) {
+          if (error.message.includes('429') && retryCount < maxRetries) {
+            retryCount++;
+            await new Promise(resolve => setTimeout(resolve, 2000 * retryCount));
+            continue;
+          }
+          throw error;
         }
-      });
 
-      if (error) throw error;
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: data.text || data.reply,
+          timestamp: new Date()
+        };
 
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: data.reply,
-        timestamp: new Date()
-      };
+        setMessages(prev => [...prev, assistantMessage]);
 
-      setMessages(prev => [...prev, assistantMessage]);
+        // Update diagnostics
+        setLastDiagnostics({
+          request_id: data.message_id,
+          endpoint: '/coach-chat',
+          status: 200,
+          latency_ms: data.latency_ms,
+          tokens_in: data.tokens_in,
+          tokens_out: data.tokens_out,
+          retry_count: retryCount,
+          model: data.model
+        });
 
-      // Auto-speak if enabled
-      if (autoSpeak) {
-        await playAudio(data.reply);
+        // Auto-speak if enabled
+        if (autoSpeak) {
+          await playAudio(data.text || data.reply);
+        }
+
+        break;
+
+      } catch (error: any) {
+        console.error('Error sending message:', error);
+        
+        if (retryCount < maxRetries) {
+          retryCount++;
+          await new Promise(resolve => setTimeout(resolve, 2000 * retryCount));
+          continue;
+        }
+
+        // Update diagnostics with error
+        setLastDiagnostics({
+          endpoint: '/coach-chat',
+          status: 500,
+          retry_count: retryCount,
+          error_class: error.message?.includes('API key') ? 'Auth' :
+                      error.message?.includes('429') ? 'RateLimit' :
+                      error.message?.includes('network') || error.message?.includes('fetch') ? 'Network' :
+                      error.message?.includes('required') ? 'DataContract' : 'Logic',
+          error_cause: error.message?.split('\n')[0] || 'Unknown error'
+        });
+
+        toast({
+          title: "Error",
+          description: "Failed to send message. Please try again.",
+          variant: "destructive",
+        });
+        break;
       }
-
-    } catch (error) {
-      console.error('Error sending message:', error);
-      toast({
-        title: "Error",
-        description: "Failed to send message. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
     }
+
+    setIsLoading(false);
   };
 
   const playAudio = async (text: string) => {
@@ -105,7 +209,10 @@ export function CoachChat({ userId }: CoachChatProps) {
       setIsPlaying(true);
       
       const { data, error } = await supabase.functions.invoke('deepgram-tts', {
-        body: { text }
+        body: { 
+          text,
+          voice: 'aura-2-hermes-en'
+        }
       });
 
       if (error) throw error;
@@ -131,6 +238,12 @@ export function CoachChat({ userId }: CoachChatProps) {
       };
 
       await audio.play();
+
+      // Update TTS diagnostics
+      setLastDiagnostics(prev => ({
+        ...prev,
+        tts_voice: data.voice_used
+      }));
 
     } catch (error) {
       console.error('Error playing audio:', error);
@@ -221,8 +334,17 @@ export function CoachChat({ userId }: CoachChatProps) {
 
           if (error) throw error;
 
+          // Update STT diagnostics
+          setLastDiagnostics(prev => ({
+            ...prev,
+            stt_language: data.detected_language,
+            stt_confidence: data.confidence
+          }));
+
           if (data.transcript && data.transcript.trim()) {
-            await handleSendMessage(data.transcript);
+            setInputValue(data.transcript);
+            // Optionally auto-send after STT
+            // await handleSendMessage(data.transcript);
           } else {
             toast({
               title: "No Speech Detected",
@@ -248,12 +370,25 @@ export function CoachChat({ userId }: CoachChatProps) {
     }
   };
 
-  if (!userId) {
+  if (authStatus === 'loading') {
+    return (
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-4">Loading...</h2>
+        </div>
+      </div>
+    );
+  }
+
+  if (authStatus === 'unauthenticated') {
     return (
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="text-center">
           <h2 className="text-2xl font-bold mb-4">Authentication Required</h2>
-          <p className="text-muted-foreground">Please log in to chat with Coach C</p>
+          <p className="text-muted-foreground mb-4">Please sign in to chat with Coach C</p>
+          <Button onClick={() => window.location.href = '/auth'}>
+            Go to Sign In
+          </Button>
         </div>
       </div>
     );
@@ -261,6 +396,51 @@ export function CoachChat({ userId }: CoachChatProps) {
 
   return (
     <div className="flex-1 flex flex-col p-6 max-w-4xl mx-auto">
+      {/* Auth Status Chip */}
+      <div className="mb-4 flex items-center gap-2">
+        <Badge variant="outline" className="gap-2">
+          <User className="w-3 h-3" />
+          Signed in as {userEmail}
+        </Badge>
+        
+        {/* Diagnostics Toggle */}
+        <Collapsible open={showDiagnostics} onOpenChange={setShowDiagnostics}>
+          <CollapsibleTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-2">
+              <Activity className="w-3 h-3" />
+              Diagnostics
+              <ChevronDown className="w-3 h-3" />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-2 p-3 bg-muted rounded-lg text-sm">
+            <div className="grid grid-cols-2 gap-2">
+              <div>Request ID: {lastDiagnostics.request_id || 'N/A'}</div>
+              <div>Endpoint: {lastDiagnostics.endpoint || 'N/A'}</div>
+              <div>Status: {lastDiagnostics.status || 'N/A'}</div>
+              <div>Latency: {lastDiagnostics.latency_ms || 'N/A'}ms</div>
+              <div>Tokens In: {lastDiagnostics.tokens_in || 'N/A'}</div>
+              <div>Tokens Out: {lastDiagnostics.tokens_out || 'N/A'}</div>
+              <div>Model: {lastDiagnostics.model || 'N/A'}</div>
+              <div>Retries: {lastDiagnostics.retry_count || 0}</div>
+              {lastDiagnostics.stt_language && (
+                <div>STT Language: {lastDiagnostics.stt_language}</div>
+              )}
+              {lastDiagnostics.stt_confidence && (
+                <div>STT Confidence: {(lastDiagnostics.stt_confidence * 100).toFixed(1)}%</div>
+              )}
+              {lastDiagnostics.tts_voice && (
+                <div>TTS Voice: {lastDiagnostics.tts_voice}</div>
+              )}
+              {lastDiagnostics.error_class && (
+                <div className="col-span-2 text-red-600">
+                  Error: {lastDiagnostics.error_class} - {lastDiagnostics.error_cause}
+                </div>
+              )}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      </div>
+
       <div className="flex items-center gap-3 mb-6">
         <Avatar className="w-12 h-12">
           <AvatarImage src="/coach-avatar.png" alt="Coach C" />
