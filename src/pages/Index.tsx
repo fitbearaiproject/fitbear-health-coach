@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Navigation } from "@/components/Navigation";
 import { Dashboard } from "@/components/Dashboard";
 import { CoachChat } from "@/components/CoachChat";
+import MenuScanner from "./MenuScanner";
 import { useAuth } from "@/hooks/useAuth";
 
 const Index = () => {
@@ -15,12 +16,7 @@ const Index = () => {
       case "coach":
         return <CoachChat userId={user?.id || ""} />;
       case "menu-scanner":
-        return (
-          <div className="flex-1 p-6">
-            <h1 className="text-3xl font-bold mb-4">Menu Scanner</h1>
-            <p className="text-muted-foreground">Upload restaurant menus to get personalized recommendations...</p>
-          </div>
-        );
+        return <MenuScanner />;
       case "meal-scanner":
         return (
           <div className="flex-1 p-6">

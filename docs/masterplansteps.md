@@ -41,11 +41,12 @@
 - Acceptance: ✅ Voice pipeline ready for testing
 
 ## 3. Menu Scanner
-- [~] Starting implementation
-- [ ] Upload → `/api/menu/parse`
-- [ ] Buckets + reasoning + nutrients displayed
-- [ ] "Log this" → `meal_logs`
-- Acceptance: log visible in Logs (Day view)
+- [x] Upload → `/api/menu/parse` (menu-parse edge function)
+- [x] Buckets + reasoning + nutrients displayed (Top Picks/Alternates/To Avoid)
+- [x] "Log this" → `meal_logs` (individual dish logging)
+- [x] Image upload with preview and base64 conversion
+- [x] Gemini vision analysis with user profile context
+- Acceptance: ✅ Menu scanner ready for testing
 
 ## 4. Meal Scanner
 - [ ] Upload → `/api/meal/analyze`
