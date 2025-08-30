@@ -53,7 +53,29 @@ serve(async (req) => {
       }
     }
 
-    // Updated Coach C system prompt with the exact prompt from user
+    // Fetch last 20 messages for conversational memory
+    let historyContents: Array<{ role: 'user' | 'model'; parts: { text: string }[] }> = [];
+    try {
+      const { data: history, error: historyError } = await supabase
+        .from('chat_logs')
+        .select('role, content, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (!historyError && history && Array.isArray(history)) {
+        // Reverse to chronological order and map to Gemini roles
+        historyContents = history.reverse().map((m: any) => ({
+          role: m.role === 'assistant' ? 'model' as const : 'user' as const,
+          parts: [{ text: m.content || '' }]
+        }));
+      }
+    } catch (_) {
+      // If history fetch fails, proceed without memory
+      historyContents = [];
+    }
+
+    // Coach C system prompt
     const systemPrompt = `You are Coach C, the voice and personality of The Fit Bear — Charan Panjwani.
 You are a science-backed, habit-centered Indian-first health, fitness, and nutrition coach.
 Your guiding philosophy: "Own Your Fitness — sustainable progress, not perfection."
@@ -119,32 +141,34 @@ Provide personalized advice based on the user's profile above. Be specific about
 
     while (retryCount <= maxRetries) {
       try {
-        geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${Deno.env.get('GOOGLE_API_KEY')}`, {
+        const apiKey = Deno.env.get('GOOGLE_API_KEY');
+        if (!apiKey) {
+          throw new Error('Missing GOOGLE_API_KEY for Gemini');
+        }
+        const requestBody = {
+          systemInstruction: { role: 'system', parts: [{ text: systemPrompt }] },
+          contents: [
+            ...historyContents,
+            { role: 'user', parts: [{ text: message }] }
+          ],
+          generationConfig: {
+            temperature: 0.7,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 1024,
+          }
+        };
+
+        geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  { text: systemPrompt }
-                ]
-              },
-              {
-                parts: [
-                  { text: message }
-                ]
-              }
-            ],
-            generationConfig: {
-              temperature: 0.7,
-              topK: 40,
-              topP: 0.95,
-              maxOutputTokens: 1024,
-            }
-          }),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
         });
+
+        if (!geminiResponse.ok && geminiResponse.status !== 429) {
+          const errText = await geminiResponse.text();
+          throw new Error(`Gemini error ${geminiResponse.status}: ${errText}`);
+        }
 
         if (geminiResponse.status === 429 && retryCount < maxRetries) {
           retryCount++;
@@ -165,11 +189,16 @@ Provide personalized advice based on the user's profile above. Be specific about
 
     const geminiData = await geminiResponse.json();
     
-    if (!geminiData.candidates || !geminiData.candidates[0]) {
+    if (geminiData.error) {
+      throw new Error(geminiData.error.message || 'Gemini API error');
+    }
+
+    if (!geminiData.candidates || !geminiData.candidates[0] || !geminiData.candidates[0].content?.parts?.length) {
       throw new Error('No response from Gemini');
     }
 
-    const reply = geminiData.candidates[0].content.parts[0].text;
+    const parts = geminiData.candidates[0].content.parts;
+    const reply = parts.map((p: any) => p.text || '').join('\n').trim();
     const responseLen = reply.length;
     const latencyMs = Date.now() - startTime;
     
@@ -190,7 +219,7 @@ Provide personalized advice based on the user's profile above. Be specific about
         content: message,
         message_id: requestId,
         prompt_len: promptLen,
-        model: 'gemini-2.0-flash-exp'
+        model: 'gemini-2.0-flash'
       },
       { 
         user_id: userId, 
@@ -199,7 +228,7 @@ Provide personalized advice based on the user's profile above. Be specific about
         message_id: requestId,
         response_len: responseLen,
         latency_ms: latencyMs,
-        model: 'gemini-2.0-flash-exp'
+        model: 'gemini-2.0-flash'
       }
     ]);
 
@@ -208,7 +237,7 @@ Provide personalized advice based on the user's profile above. Be specific about
         message_id: requestId,
         text: sanitizedReply,
         originalReply: reply,
-        model: 'gemini-2.0-flash-exp',
+        model: 'gemini-2.0-flash',
         tokens_in: promptLen,
         tokens_out: responseLen,
         latency_ms: latencyMs
