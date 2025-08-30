@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
 import { 
   Home,
   MessageCircle,
@@ -27,6 +28,7 @@ const navItems = [
 ];
 
 export function Navigation({ currentPage, onNavigate }: NavigationProps) {
+  const { signOut } = useAuth();
   return (
     <nav className="w-64 bg-card border-r border-border h-screen p-4 flex flex-col">
       {/* Logo */}
@@ -64,7 +66,11 @@ export function Navigation({ currentPage, onNavigate }: NavigationProps) {
       </div>
 
       {/* Logout */}
-      <Button variant="ghost" className="justify-start gap-3 h-12 text-destructive">
+      <Button 
+        variant="ghost" 
+        className="justify-start gap-3 h-12 text-destructive"
+        onClick={signOut}
+      >
         <LogOut className="w-5 h-5" />
         Logout
       </Button>

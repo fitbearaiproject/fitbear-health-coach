@@ -2,16 +2,18 @@ import { useState } from "react";
 import { Navigation } from "@/components/Navigation";
 import { Dashboard } from "@/components/Dashboard";
 import { CoachChat } from "@/components/CoachChat";
+import { useAuth } from "@/hooks/useAuth";
 
 const Index = () => {
   const [currentPage, setCurrentPage] = useState("dashboard");
+  const { user } = useAuth();
 
   const renderPage = () => {
     switch (currentPage) {
       case "dashboard":
         return <Dashboard />;
       case "coach":
-        return <CoachChat userId="temp-user-id" />;
+        return <CoachChat userId={user?.id || ""} />;
       case "menu-scanner":
         return (
           <div className="flex-1 p-6">
