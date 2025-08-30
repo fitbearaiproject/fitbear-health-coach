@@ -1,1 +1,10 @@
 project_id = "xnncvfuamecmjvvoaywz"
+
+[functions.coach-chat]
+verify_jwt = false
+
+[functions.deepgram-stt]
+verify_jwt = false
+
+[functions.deepgram-tts]
+verify_jwt = false
