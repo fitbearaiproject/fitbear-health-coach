@@ -7,13 +7,16 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2 } from 'lucide-react';
 
 export default function Auth() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [resetEmailSent, setResetEmailSent] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -46,7 +49,6 @@ export default function Auth() {
       setError(error.message);
     } else {
       setError('');
-      // Since email confirmation is disabled, user should be logged in automatically
       navigate('/');
     }
     setLoading(false);
@@ -70,6 +72,27 @@ export default function Auth() {
     setLoading(false);
   };
 
+  const handleForgotPassword = async () => {
+    if (!email) {
+      setError('Please enter your email address first');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`
+    });
+
+    if (error) {
+      setError(error.message);
+    } else {
+      setResetEmailSent(true);
+    }
+    setLoading(false);
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-accent/10 p-4">
       <Card className="w-full max-w-md">
@@ -78,6 +101,13 @@ export default function Auth() {
           <CardDescription>Your personal health and nutrition coach</CardDescription>
         </CardHeader>
         <CardContent>
+          {resetEmailSent && (
+            <Alert className="mb-4">
+              <AlertDescription>
+                Password reset email sent! Check your inbox and click the link to reset your password.
+              </AlertDescription>
+            </Alert>
+          )}
           <Tabs defaultValue="signin" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="signin">Sign In</TabsTrigger>
@@ -108,6 +138,14 @@ export default function Auth() {
                     required
                   />
                 </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="remember" 
+                    checked={rememberMe}
+                    onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+                  />
+                  <Label htmlFor="remember" className="text-sm">Remember me</Label>
+                </div>
                 {error && (
                   <Alert variant="destructive">
                     <AlertDescription>{error}</AlertDescription>
@@ -117,6 +155,17 @@ export default function Auth() {
                   {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                   Sign In
                 </Button>
+                <div className="text-center">
+                  <Button 
+                    type="button" 
+                    variant="link" 
+                    className="text-sm"
+                    onClick={handleForgotPassword}
+                    disabled={loading}
+                  >
+                    Forgot password?
+                  </Button>
+                </div>
               </form>
             </TabsContent>
             

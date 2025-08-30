@@ -21,6 +21,9 @@
 - [x] Protected routes - redirect to /auth if not authenticated
 - [x] Added logout functionality to Navigation
 - [x] Used proper auth state management with onAuthStateChange
+- [x] Added forgot password functionality with reset page
+- [x] Added remember me checkbox
+- [~] Moving to Coach C Text Chat E2E implementation
 
 ## 1. Coach C — Text Chat E2E
 - [ ] API: `/api/coachc/chat` with error taxonomy

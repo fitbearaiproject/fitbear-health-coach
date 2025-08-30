@@ -6,6 +6,7 @@ import { useAuth } from "./hooks/useAuth";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
+import ResetPassword from "./pages/ResetPassword";
 import { Loader2 } from "lucide-react";
 
 const App = () => {
@@ -25,6 +26,7 @@ const App = () => {
       <Sonner />
       <Routes>
         <Route path="/auth" element={user ? <Navigate to="/" /> : <Auth />} />
+        <Route path="/reset-password" element={user ? <Navigate to="/" /> : <ResetPassword />} />
         <Route path="/" element={user ? <Index /> : <Navigate to="/auth" />} />
         <Route path="*" element={user ? <NotFound /> : <Navigate to="/auth" />} />
       </Routes>
