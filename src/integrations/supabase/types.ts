@@ -19,6 +19,11 @@ export type Database = {
           content: string
           created_at: string
           id: string
+          latency_ms: number | null
+          message_id: string | null
+          model: string | null
+          prompt_len: number | null
+          response_len: number | null
           role: string
           user_id: string
         }
@@ -26,6 +31,11 @@ export type Database = {
           content: string
           created_at?: string
           id?: string
+          latency_ms?: number | null
+          message_id?: string | null
+          model?: string | null
+          prompt_len?: number | null
+          response_len?: number | null
           role: string
           user_id: string
         }
@@ -33,6 +43,11 @@ export type Database = {
           content?: string
           created_at?: string
           id?: string
+          latency_ms?: number | null
+          message_id?: string | null
+          model?: string | null
+          prompt_len?: number | null
+          response_len?: number | null
           role?: string
           user_id?: string
         }
