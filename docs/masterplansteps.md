@@ -66,9 +66,12 @@
 - Acceptance: ✅ Logs page ready for testing
 
 ## 6. Profile (BPS)
-- [ ] Fields: gender, diet_type (non-veg not omnivore), activity, conditions[], notes
-- [ ] Used by Chat + Scanners
-- Acceptance: context fields appear in Diagnostics payload
+- [x] Fields: gender, diet_type (non-vegetarian not omnivore), activity, conditions[], notes
+- [x] Comprehensive form with all health profile fields
+- [x] Checkboxes for conditions, allergies, cuisines
+- [x] Used by Chat + Scanners for personalized recommendations
+- [x] Age, height, weight, sleep hours, stress level
+- Acceptance: ✅ Profile fields appear in Coach C context
 
 ## 7. Settings
 - [ ] Targets editor (protein, fibre, sodium, sugar, calories)

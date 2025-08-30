@@ -5,6 +5,7 @@ import { CoachChat } from "@/components/CoachChat";
 import MenuScanner from "./MenuScanner";
 import MealScanner from "./MealScanner";
 import Logs from "./Logs";
+import Profile from "./Profile";
 import { useAuth } from "@/hooks/useAuth";
 
 const Index = () => {
@@ -24,12 +25,7 @@ const Index = () => {
       case "logs":
         return <Logs />;
       case "profile":
-        return (
-          <div className="flex-1 p-6">
-            <h1 className="text-3xl font-bold mb-4">Profile (BPS)</h1>
-            <p className="text-muted-foreground">Manage your Body Profile System settings...</p>
-          </div>
-        );
+        return <Profile />;
       case "settings":
         return (
           <div className="flex-1 p-6">
