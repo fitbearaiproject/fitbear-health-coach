@@ -6,6 +6,7 @@ import MenuScanner from "./MenuScanner";
 import MealScanner from "./MealScanner";
 import Logs from "./Logs";
 import Profile from "./Profile";
+import Settings from "./Settings";
 import { useAuth } from "@/hooks/useAuth";
 
 const Index = () => {
@@ -27,12 +28,7 @@ const Index = () => {
       case "profile":
         return <Profile />;
       case "settings":
-        return (
-          <div className="flex-1 p-6">
-            <h1 className="text-3xl font-bold mb-4">Settings</h1>
-            <p className="text-muted-foreground">Customize your app preferences and targets...</p>
-          </div>
-        );
+        return <Settings />;
       default:
         return <Dashboard />;
     }

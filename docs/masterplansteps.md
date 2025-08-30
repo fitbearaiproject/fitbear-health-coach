@@ -74,9 +74,9 @@
 - Acceptance: ✅ Profile fields appear in Coach C context
 
 ## 7. Settings
-- [ ] Targets editor (protein, fibre, sodium, sugar, calories)
-- [ ] Danger Zone delete account (confirm modal)
-- Acceptance: account deletion verified (auth + data)
+- [x] Targets editor (protein, fibre, sodium, sugar, calories)
+- [x] Danger Zone delete account (confirm modal)
+- Acceptance: ✅ Settings page ready for testing
 
 ## 8. Consistency & Palette
 - [ ] Apply health/wellness palette globally
