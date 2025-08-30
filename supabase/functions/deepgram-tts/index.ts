@@ -11,6 +11,17 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Safe base64 encoder for large buffers
+  const uint8ToBase64 = (bytes: Uint8Array) => {
+    let binary = '';
+    const chunkSize = 0x8000; // 32KB chunks to avoid call stack overflow
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+      binary += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+    return btoa(binary);
+  };
+
   const requestId = crypto.randomUUID();
   const startTime = Date.now();
 
@@ -41,9 +52,9 @@ serve(async (req) => {
       throw new Error(`Deepgram TTS error: ${errorText}`);
     }
 
-    // Get audio buffer and convert to base64
+    // Get audio buffer and convert to base64 safely
     const audioBuffer = await response.arrayBuffer();
-    const base64Audio = btoa(String.fromCharCode(...new Uint8Array(audioBuffer)));
+    const base64Audio = uint8ToBase64(new Uint8Array(audioBuffer));
     const latencyMs = Date.now() - startTime;
 
     return new Response(
