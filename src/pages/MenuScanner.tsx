@@ -35,11 +35,12 @@ interface AnalysisResult {
   model: string;
   latency_ms: number;
   user_context: string;
+  images_processed: number;
 }
 
 export default function MenuScanner() {
-  const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string>('');
+  const [selectedImages, setSelectedImages] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string>('');
@@ -49,28 +50,54 @@ export default function MenuScanner() {
   const { user } = useAuth();
   const { toast } = useToast();
 
-  const handleImageSelect = (file: File) => {
-    if (file.size > 10 * 1024 * 1024) { // 10MB limit
-      setError('Image size must be less than 10MB');
+  const handleImageSelect = (files: FileList) => {
+    const fileArray = Array.from(files);
+    
+    // Limit to 5 images
+    if (fileArray.length > 5) {
+      setError('Maximum 5 images allowed');
       return;
     }
 
-    setSelectedImage(file);
+    // Check file sizes
+    const oversizedFiles = fileArray.filter(file => file.size > 10 * 1024 * 1024);
+    if (oversizedFiles.length > 0) {
+      setError('All images must be less than 10MB');
+      return;
+    }
+
+    setSelectedImages(fileArray);
     setError('');
     setAnalysis(null);
 
-    // Create preview
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setImagePreview(e.target?.result as string);
-    };
-    reader.readAsDataURL(file);
+    // Create previews
+    const previews: string[] = [];
+    fileArray.forEach((file, index) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        previews[index] = e.target?.result as string;
+        if (previews.length === fileArray.length) {
+          setImagePreviews([...previews]);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      handleImageSelect(file);
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      handleImageSelect(files);
+    }
+  };
+
+  const removeImage = (index: number) => {
+    const newImages = selectedImages.filter((_, i) => i !== index);
+    const newPreviews = imagePreviews.filter((_, i) => i !== index);
+    setSelectedImages(newImages);
+    setImagePreviews(newPreviews);
+    if (newImages.length === 0) {
+      setAnalysis(null);
     }
   };
 
@@ -89,17 +116,20 @@ export default function MenuScanner() {
   };
 
   const analyzeMenu = async () => {
-    if (!selectedImage || !user) return;
+    if (selectedImages.length === 0 || !user) return;
 
     setIsAnalyzing(true);
     setError('');
 
     try {
-      const base64Image = await convertToBase64(selectedImage);
+      // Convert all images to base64
+      const base64Images = await Promise.all(
+        selectedImages.map(image => convertToBase64(image))
+      );
 
       const { data, error: supabaseError } = await supabase.functions.invoke('menu-parse', {
         body: {
-          image_data: base64Image,
+          images_data: base64Images,
           user_id: user.id
         }
       });
@@ -113,7 +143,7 @@ export default function MenuScanner() {
       setAnalysis(data as AnalysisResult);
       toast({
         title: "Menu analyzed successfully!",
-        description: "Check out your personalized recommendations below.",
+        description: `Analyzed ${selectedImages.length} image(s). Check out your personalized recommendations below.`,
       });
 
     } catch (err) {
@@ -257,7 +287,7 @@ export default function MenuScanner() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {!selectedImage ? (
+            {selectedImages.length === 0 ? (
               <div className="flex flex-col sm:flex-row gap-4">
                 <Button
                   variant="outline"
@@ -265,54 +295,84 @@ export default function MenuScanner() {
                   className="flex items-center gap-2"
                 >
                   <Upload className="h-4 w-4" />
-                  Choose Image
+                  Choose Images (Max 5)
                 </Button>
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
+                  multiple
                   onChange={handleFileUpload}
                   className="hidden"
                 />
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="relative">
-                  <img
-                    src={imagePreview}
-                    alt="Menu preview"
-                    className="max-w-full h-auto max-h-64 rounded-lg border"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  {imagePreviews.map((preview, index) => (
+                    <div key={index} className="relative">
+                      <img
+                        src={preview}
+                        alt={`Menu preview ${index + 1}`}
+                        className="w-full h-32 object-cover rounded-lg border"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => removeImage(index)}
+                        className="absolute top-1 right-1 h-6 w-6 p-0"
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                      <Badge 
+                        variant="secondary" 
+                        className="absolute bottom-1 left-1 text-xs"
+                      >
+                        {index + 1}
+                      </Badge>
+                    </div>
+                  ))}
+                  {selectedImages.length < 5 && (
+                    <Button
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="h-32 border-dashed flex flex-col items-center gap-2"
+                    >
+                      <Upload className="h-6 w-6" />
+                      <span className="text-sm">Add More</span>
+                    </Button>
+                  )}
+                </div>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    {selectedImages.length} of 5 images selected
+                  </p>
                   <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setSelectedImage(null);
-                      setImagePreview('');
-                      setAnalysis(null);
-                    }}
-                    className="absolute top-2 right-2"
+                    onClick={analyzeMenu}
+                    disabled={isAnalyzing}
+                    className="flex items-center gap-2"
                   >
-                    <X className="h-4 w-4" />
+                    {isAnalyzing ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Analyzing {selectedImages.length} image{selectedImages.length > 1 ? 's' : ''}...
+                      </>
+                    ) : (
+                      <>
+                        <Camera className="h-4 w-4" />
+                        Analyze Menu ({selectedImages.length} image{selectedImages.length > 1 ? 's' : ''})
+                      </>
+                    )}
                   </Button>
                 </div>
-                <Button
-                  onClick={analyzeMenu}
-                  disabled={isAnalyzing}
-                  className="w-full sm:w-auto"
-                >
-                  {isAnalyzing ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      Analyzing Menu...
-                    </>
-                  ) : (
-                    <>
-                      <Camera className="h-4 w-4 mr-2" />
-                      Analyze Menu
-                    </>
-                  )}
-                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
               </div>
             )}
           </div>
@@ -413,7 +473,7 @@ export default function MenuScanner() {
               <CardTitle className="text-sm">Analysis Details</CardTitle>
             </CardHeader>
             <CardContent className="text-xs text-muted-foreground">
-              <p>Model: {analysis.model} | Latency: {analysis.latency_ms}ms | Request ID: {analysis.request_id}</p>
+              <p>Model: {analysis.model} | Images: {analysis.images_processed} | Latency: {analysis.latency_ms}ms | Request ID: {analysis.request_id}</p>
             </CardContent>
           </Card>
         </div>

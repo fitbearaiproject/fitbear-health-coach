@@ -49,10 +49,13 @@
 - Acceptance: ✅ Menu scanner ready for testing
 
 ## 4. Meal Scanner
-- [ ] Upload → `/api/meal/analyze`
-- [ ] Dedupe safeguard; save photo to Storage
-- [ ] Show last 5 logged meals
-- Acceptance: list shows 5 most recent with thumbnails
+- [x] Upload → `/api/meal/analyze` (meal-analyze edge function)
+- [x] Dedupe safeguard (check recent logs in last hour)
+- [x] Save photo to Storage (meal-photos bucket)
+- [x] Show last 5 logged meals with thumbnails
+- [x] Individual dish detection with nutrition analysis
+- [x] Bulk logging of all detected dishes
+- Acceptance: ✅ Meal scanner ready for testing
 
 ## 5. Logs
 - [ ] Day / Week / Custom range filters

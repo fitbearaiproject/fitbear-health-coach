@@ -16,14 +16,10 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
-    const { images_data, user_id } = await req.json();
+    const { image_data, user_id } = await req.json();
     
-    if (!images_data || !Array.isArray(images_data) || images_data.length === 0 || !user_id) {
-      throw new Error('Images data array and user_id are required');
-    }
-
-    if (images_data.length > 5) {
-      throw new Error('Maximum 5 images allowed');
+    if (!image_data || !user_id) {
+      throw new Error('Image data and user_id are required');
     }
 
     // Initialize Supabase client
@@ -53,53 +49,43 @@ serve(async (req) => {
       }
     }
 
-    // System prompt for menu analysis
-    const systemPrompt = `You are Coach C, analyzing restaurant menu images for healthy recommendations.
+    // System prompt for meal analysis
+    const systemPrompt = `You are Coach C, analyzing a meal photo for nutrition tracking.
 
-Analyze ALL the provided menu images and categorize dishes into:
-1. **Top Picks** - Healthiest options aligned with user's profile
-2. **Alternates** - Moderate choices with modifications  
-3. **To Avoid** - High calorie/unhealthy options
+Analyze this meal image and detect all visible food items with their estimated portions and nutrition.
 
-IMPORTANT: Analyze all ${images_data.length} images provided and combine findings into a single comprehensive analysis.
-
-For each dish, provide:
-- Name
-- Portion size (in Indian units: katori, roti, etc.)
+For each dish/item detected, provide:
+- Name (in everyday Indian terms)
+- Portion size (using Indian household units: katori, roti count/diameter, ladle, handful, etc.)
 - Estimated calories
 - Macros (protein/carbs/fat in grams)
-- Key nutrients/vitamins when relevant
-- Health tags (high-protein, low-carb, etc.)
-- Brief reasoning for categorization
+- Health flags (high-protein, high-fiber, fried, sugary, etc.)
 
 ${userContext}
 
-Consider user's diet type, health conditions, and targets when categorizing.
-Use everyday Indian context and portions. Be practical and encouraging.
+Consider user's dietary preferences and health conditions.
+Be practical and realistic with portion estimates.
+If multiple items look similar, group them as one entry.
 
 Return as JSON:
 {
-  "top_picks": [{"name": "...", "portion": "...", "kcal": 000, "protein_g": 00, "carbs_g": 00, "fat_g": 00, "tags": ["..."], "reasoning": "..."}],
-  "alternates": [...],
-  "to_avoid": [...],
-  "general_notes": "...",
-  "images_analyzed": ${images_data.length}
+  "dishes": [
+    {
+      "name": "Dal Tadka",
+      "portion": "1 katori (150ml)",
+      "kcal": 120,
+      "protein_g": 8,
+      "carbs_g": 18,
+      "fat_g": 3,
+      "flags": ["high-protein", "comfort-food"]
+    }
+  ],
+  "total_kcal": 000,
+  "meal_notes": "Brief overall assessment of the meal's healthiness",
+  "portion_confidence": "high/medium/low"
 }`;
 
-    // Prepare parts array with text and all images
-    const parts = [{ text: systemPrompt }];
-    
-    // Add all images to the parts array
-    images_data.forEach((imageData: string, index: number) => {
-      parts.push({
-        inline_data: {
-          mime_type: "image/jpeg",
-          data: imageData
-        }
-      });
-    });
-
-    // Call Gemini API with multiple images
+    // Call Gemini API with image
     const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${Deno.env.get('GOOGLE_API_KEY')}`, {
       method: 'POST',
       headers: {
@@ -108,14 +94,22 @@ Return as JSON:
       body: JSON.stringify({
         contents: [
           {
-            parts: parts
+            parts: [
+              { text: systemPrompt },
+              { 
+                inline_data: {
+                  mime_type: "image/jpeg",
+                  data: image_data
+                }
+              }
+            ]
           }
         ],
         generationConfig: {
           temperature: 0.7,
           topK: 40,
           topP: 0.95,
-          maxOutputTokens: 2048,
+          maxOutputTokens: 1536,
         }
       }),
     });
@@ -142,10 +136,10 @@ Return as JSON:
     } catch (parseError) {
       // Fallback: return raw response if JSON parsing fails
       parsedData = {
-        top_picks: [],
-        alternates: [],
-        to_avoid: [],
-        general_notes: rawResponse,
+        dishes: [],
+        total_kcal: 0,
+        meal_notes: rawResponse,
+        portion_confidence: "low",
         parsing_error: true
       };
     }
@@ -158,14 +152,13 @@ Return as JSON:
         analysis: parsedData,
         model: 'gemini-2.0-flash-exp',
         latency_ms: latencyMs,
-        user_context: userContext,
-        images_processed: images_data.length
+        user_context: userContext
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    console.error('Error in menu-parse function:', error);
+    console.error('Error in meal-analyze function:', error);
     const latencyMs = Date.now() - startTime;
     
     return new Response(

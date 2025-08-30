@@ -3,6 +3,7 @@ import { Navigation } from "@/components/Navigation";
 import { Dashboard } from "@/components/Dashboard";
 import { CoachChat } from "@/components/CoachChat";
 import MenuScanner from "./MenuScanner";
+import MealScanner from "./MealScanner";
 import { useAuth } from "@/hooks/useAuth";
 
 const Index = () => {
@@ -18,12 +19,7 @@ const Index = () => {
       case "menu-scanner":
         return <MenuScanner />;
       case "meal-scanner":
-        return (
-          <div className="flex-1 p-6">
-            <h1 className="text-3xl font-bold mb-4">Meal Scanner</h1>
-            <p className="text-muted-foreground">Snap photos of your meals for automatic nutrition tracking...</p>
-          </div>
-        );
+        return <MealScanner />;
       case "logs":
         return (
           <div className="flex-1 p-6">
