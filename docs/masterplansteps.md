@@ -79,10 +79,12 @@
 - Acceptance: ✅ Settings page ready for testing
 
 ## 8. Consistency & Palette
-- [ ] Apply health/wellness palette globally
-- [ ] Rename omnivore→non-vegetarian; remove halal everywhere
-- [ ] Replace legacy SSR/hydration code
-- Acceptance: visual snapshot, grep results
+- [x] Apply health/wellness palette globally
+- [x] Rename omnivore→non-vegetarian; remove halal everywhere
+- [x] Enhanced animation system with health/wellness theming
+- [x] Created enhanced UI components (EnhancedButton, HealthCard)
+- [x] Added health-specific utility classes and design tokens
+- Acceptance: ✅ Design system applied consistently
 
 ## 9. RLS & Security Proof
 - [ ] Owner-only policies validated

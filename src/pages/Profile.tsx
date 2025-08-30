@@ -32,8 +32,8 @@ interface ProfileData {
 }
 
 const DIET_TYPES = [
-  { value: 'vegetarian', label: 'Vegetarian' },
   { value: 'non_vegetarian', label: 'Non-Vegetarian' },
+  { value: 'vegetarian', label: 'Vegetarian' },
   { value: 'vegan', label: 'Vegan' },
   { value: 'ovo_vegetarian', label: 'Ovo-Vegetarian' },
   { value: 'pescatarian', label: 'Pescatarian' }

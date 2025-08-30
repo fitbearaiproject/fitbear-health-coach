@@ -171,4 +171,35 @@
     background-color: rgba(0, 0, 0, 0.75);
     border: 1px solid rgba(255, 255, 255, 0.125);
   }
+  }
+
+  /* Enhanced interactive elements */
+  .story-link {
+    @apply relative inline-block after:content-[''] after:absolute after:w-full after:scale-x-0 after:h-0.5 after:bottom-0 after:left-0 after:bg-primary after:origin-bottom-right after:transition-transform after:duration-300 hover:after:scale-x-100 hover:after:origin-bottom-left;
+  }
+
+  .hover-scale {
+    @apply transition-transform duration-200 hover:scale-105;
+  }
+
+  /* Health app specific utilities */
+  .health-gradient {
+    background: var(--gradient-primary);
+  }
+
+  .wellness-card {
+    @apply bg-card border border-border rounded-lg shadow-primary;
+  }
+
+  .nutrition-badge {
+    @apply inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-success/10 text-success border border-success/20;
+  }
+
+  .protein-progress {
+    @apply h-2 w-full rounded-full bg-muted overflow-hidden;
+  }
+
+  .protein-fill {
+    @apply h-full bg-gradient-primary transition-all duration-300 ease-out;
+  }
 }
