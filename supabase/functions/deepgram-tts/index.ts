@@ -32,6 +32,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         text: text,
+        speed: 1.2
       }),
     });
 
