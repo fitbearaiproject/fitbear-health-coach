@@ -13,6 +13,7 @@ function sanitize(text: string) {
     .replace(/[*_`~>#\[\]()!-]/g, ' ') // md symbols
     .replace(/<[^>]+>/g, ' ') // tags
     .replace(/\s+/g, ' ') // collapse whitespace
+    .replace(/namaste/gi, '') // Remove "namaste" for Coach C English-only
     .trim();
 }
 

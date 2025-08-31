@@ -210,6 +210,7 @@ Provide personalized advice based on the user's profile above. Be specific about
       .replace(/#{1,6}\s/g, '')
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
       .replace(/`([^`]+)`/g, '$1')
+      .replace(/namaste/gi, '') // Remove "namaste" for Coach C English-only
       .replace(/<[^>]*>/g, ''); // Remove any HTML/SSML tags
 
     // Log the conversation with diagnostics

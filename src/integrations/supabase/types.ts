@@ -181,6 +181,33 @@ export type Database = {
           },
         ]
       }
+      hydration_logs: {
+        Row: {
+          created_at: string
+          cups: number
+          id: string
+          log_date: string
+          logged_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          cups?: number
+          id?: string
+          log_date?: string
+          logged_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          cups?: number
+          id?: string
+          log_date?: string
+          logged_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       meal_logs: {
         Row: {
           carbs_g: number | null

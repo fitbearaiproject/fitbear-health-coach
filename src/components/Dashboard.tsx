@@ -1,6 +1,10 @@
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+import { format, startOfDay, endOfDay } from "date-fns";
 import { 
   Target,
   TrendingUp,
@@ -12,22 +16,141 @@ import {
   Activity,
   MessageCircle,
   Camera,
-  Utensils
+  Utensils,
+  Plus,
+  Minus
 } from "lucide-react";
 
 export function Dashboard() {
-  // Mock data - will be replaced with real data from Supabase
-  const todayStats = {
-    calories: 1420,
+  const [todayStats, setTodayStats] = useState({
+    calories: 0,
     targetCalories: 2000,
-    protein: 65,
+    protein: 0,
     targetProtein: 120,
-    carbs: 140,
+    carbs: 0,
     targetCarbs: 200,
-    fat: 45,
+    fat: 0,
     targetFat: 67,
-    water: 6,
+    water: 0,
     targetWater: 8,
+  });
+  const [isLoading, setIsLoading] = useState(true);
+  const { user } = useAuth();
+
+  // Load real data from Supabase
+  useEffect(() => {
+    if (user) {
+      loadTodayStats();
+    }
+  }, [user]);
+
+  const loadTodayStats = async () => {
+    if (!user) return;
+    
+    setIsLoading(true);
+    try {
+      const today = new Date();
+      const from = startOfDay(today);
+      const to = endOfDay(today);
+
+      // Load today's meal totals
+      const { data: meals } = await supabase
+        .from('meal_logs')
+        .select('kcal, protein_g, carbs_g, fat_g')
+        .eq('user_id', user.id)
+        .gte('meal_time', from.toISOString())
+        .lte('meal_time', to.toISOString());
+
+      // Load today's water intake
+      const { data: hydration } = await supabase
+        .from('hydration_logs')
+        .select('cups')
+        .eq('user_id', user.id)
+        .eq('log_date', format(today, 'yyyy-MM-dd'));
+
+      // Load user targets
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('targets')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      const mealTotals = meals?.reduce((acc, meal) => ({
+        calories: acc.calories + (meal.kcal || 0),
+        protein: acc.protein + (meal.protein_g || 0),
+        carbs: acc.carbs + (meal.carbs_g || 0),
+        fat: acc.fat + (meal.fat_g || 0),
+      }), { calories: 0, protein: 0, carbs: 0, fat: 0 }) || { calories: 0, protein: 0, carbs: 0, fat: 0 };
+
+      const totalWater = hydration?.reduce((sum, log) => sum + log.cups, 0) || 0;
+      const targets = (profile?.targets as any) || {};
+
+      setTodayStats({
+        calories: Math.round(mealTotals.calories),
+        targetCalories: targets.calories_per_day || 2000,
+        protein: Math.round(mealTotals.protein),
+        targetProtein: targets.protein_g || 120,
+        carbs: Math.round(mealTotals.carbs),
+        targetCarbs: targets.carbs_g || 200,
+        fat: Math.round(mealTotals.fat),
+        targetFat: targets.fat_g || 67,
+        water: totalWater,
+        targetWater: 8,
+      });
+
+    } catch (error) {
+      console.error('Error loading today stats:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const updateWater = async (increment: number) => {
+    if (!user) return;
+    
+    try {
+      const today = format(new Date(), 'yyyy-MM-dd');
+      
+      if (increment > 0) {
+        // Add cups
+        await supabase
+          .from('hydration_logs')
+          .insert({
+            user_id: user.id,
+            cups: increment,
+            log_date: today
+          });
+      } else {
+        // Remove cups (need to find and delete/update recent entries)
+        const { data: recentLogs } = await supabase
+          .from('hydration_logs')
+          .select('id, cups')
+          .eq('user_id', user.id)
+          .eq('log_date', today)
+          .order('logged_at', { ascending: false })
+          .limit(1);
+
+        if (recentLogs && recentLogs.length > 0) {
+          const log = recentLogs[0];
+          if (log.cups > 1) {
+            await supabase
+              .from('hydration_logs')
+              .update({ cups: log.cups - 1 })
+              .eq('id', log.id);
+          } else {
+            await supabase
+              .from('hydration_logs')
+              .delete()
+              .eq('id', log.id);
+          }
+        }
+      }
+      
+      // Reload stats
+      await loadTodayStats();
+    } catch (error) {
+      console.error('Error updating water:', error);
+    }
   };
 
   const weeklyProgress = [
@@ -37,8 +160,19 @@ export function Dashboard() {
     { day: "Thu", calories: 1750 },
     { day: "Fri", calories: 1900 },
     { day: "Sat", calories: 2200 },
-    { day: "Sun", calories: 1420 },
+    { day: "Sun", calories: todayStats.calories },
   ];
+
+  if (isLoading) {
+    return (
+      <div className="flex-1 p-6 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading your health data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 p-6 space-y-6">
@@ -99,10 +233,28 @@ export function Dashboard() {
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
               <Droplets className="w-8 h-8 text-accent" />
-              <div>
+              <div className="flex-1">
                 <p className="text-sm text-muted-foreground">Water</p>
                 <p className="text-2xl font-bold">{todayStats.water} cups</p>
                 <p className="text-xs text-muted-foreground">of {todayStats.targetWater}</p>
+              </div>
+              <div className="flex flex-col gap-1">
+                <Button
+                  size="sm"
+                  onClick={() => updateWater(1)}
+                  className="h-8 w-8 p-0"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => updateWater(-1)}
+                  className="h-8 w-8 p-0"
+                  disabled={todayStats.water === 0}
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
               </div>
             </div>
           </CardContent>
@@ -205,21 +357,41 @@ export function Dashboard() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Button className="h-20 bg-gradient-primary shadow-primary">
+            <Button 
+              className="h-20 bg-gradient-primary shadow-primary"
+              onClick={() => {
+                const navEvent = new CustomEvent('navigate', { detail: 'coach' });
+                window.dispatchEvent(navEvent);
+              }}
+            >
               <div className="text-center">
                 <MessageCircle className="w-6 h-6 mx-auto mb-2" />
                 <span>Chat with Coach C</span>
               </div>
             </Button>
             
-            <Button variant="outline" className="h-20">
+            <Button 
+              variant="outline" 
+              className="h-20"
+              onClick={() => {
+                const navEvent = new CustomEvent('navigate', { detail: 'meal-scanner' });
+                window.dispatchEvent(navEvent);
+              }}
+            >
               <div className="text-center">
                 <Camera className="w-6 h-6 mx-auto mb-2" />
                 <span>Scan Meal</span>
               </div>
             </Button>
             
-            <Button variant="outline" className="h-20">
+            <Button 
+              variant="outline" 
+              className="h-20"
+              onClick={() => {
+                const navEvent = new CustomEvent('navigate', { detail: 'menu-scanner' });
+                window.dispatchEvent(navEvent);
+              }}
+            >
               <div className="text-center">
                 <Utensils className="w-6 h-6 mx-auto mb-2" />
                 <span>Scan Menu</span>

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useHydration } from '@/hooks/useHydration';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -11,7 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { CalendarIcon, TrendingUp, Target, ImageIcon } from 'lucide-react';
+import { CalendarIcon, TrendingUp, Target, ImageIcon, Droplets, Plus, Minus } from 'lucide-react';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, subDays, subWeeks } from 'date-fns';
 
 interface MealLog {
@@ -55,6 +56,7 @@ export default function Logs() {
 
   const { user } = useAuth();
   const { toast } = useToast();
+  const { hydrationLogs, todayTotal: waterToday, addWater, removeWater, loadHydrationLogs } = useHydration();
 
   // Calculate date range based on selected filter
   const getDateRange = () => {
@@ -268,9 +270,16 @@ export default function Logs() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column - Totals and Progress */}
-        <div className="space-y-6">
+      <Tabs defaultValue="nutrition" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="nutrition">Nutrition</TabsTrigger>
+          <TabsTrigger value="hydration">Water Intake</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="nutrition" className="mt-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left Column - Totals and Progress */}
+            <div className="space-y-6">
           {/* Nutrition Totals */}
           <Card>
             <CardHeader>
@@ -444,6 +453,82 @@ export default function Logs() {
           </Card>
         </div>
       </div>
+    </TabsContent>
+    
+    <TabsContent value="hydration" className="mt-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column - Water Stats */}
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Droplets className="h-4 w-4" />
+                Water Intake Today
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-center space-y-4">
+                <div className="text-4xl font-bold text-blue-600">{waterToday}</div>
+                <p className="text-sm text-muted-foreground">cups consumed</p>
+                <div className="flex gap-2 justify-center">
+                  <Button size="sm" onClick={() => addWater(1)}>
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Cup
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={() => removeWater()}
+                    disabled={waterToday === 0}
+                  >
+                    <Minus className="h-4 w-4 mr-1" />
+                    Remove
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        
+        {/* Right Column - Water History */}
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Water History</CardTitle>
+              <CardDescription>Your hydration logs for the selected period</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ScrollArea className="h-96">
+                {hydrationLogs.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Droplets className="h-8 w-8 mx-auto mb-4 opacity-50" />
+                    <p className="text-muted-foreground">No water logs for this period</p>
+                    <p className="text-sm text-muted-foreground">Start tracking your hydration!</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {hydrationLogs.map((log) => (
+                      <Card key={log.id} className="p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium">{log.cups} cup{log.cups !== 1 ? 's' : ''}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {format(new Date(log.logged_at), 'MMM d, h:mm a')}
+                            </p>
+                          </div>
+                          <Droplets className="h-5 w-5 text-blue-500" />
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </TabsContent>
+  </Tabs>
     </div>
   );
 }

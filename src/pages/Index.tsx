@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Navigation } from "@/components/Navigation";
 import { Dashboard } from "@/components/Dashboard";
 import { CoachChat } from "@/components/CoachChat";
@@ -12,6 +12,16 @@ import { useAuth } from "@/hooks/useAuth";
 const Index = () => {
   const [currentPage, setCurrentPage] = useState("dashboard");
   const { user } = useAuth();
+
+  // Listen for navigation events from quick actions
+  useEffect(() => {
+    const handleNavigate = (event: CustomEvent) => {
+      setCurrentPage(event.detail);
+    };
+    
+    window.addEventListener('navigate', handleNavigate as EventListener);
+    return () => window.removeEventListener('navigate', handleNavigate as EventListener);
+  }, []);
 
   const renderPage = () => {
     switch (currentPage) {
