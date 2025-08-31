@@ -135,7 +135,7 @@ serve(async (req) => {
   try {
     // Validate required environment variables
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseServiceRole = Deno.env.get('SUPABASE_SERVICE_ROLE');
+    const supabaseServiceRole = Deno.env.get('SUPABASE_SERVICE_ROLE') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const googleApiKey = Deno.env.get('GOOGLE_API_KEY');
     
     if (!supabaseUrl) {
@@ -154,7 +154,7 @@ serve(async (req) => {
     if (!supabaseServiceRole) {
       return new Response(
         JSON.stringify({ 
-          error: 'Missing SUPABASE_SERVICE_ROLE environment variable',
+          error: 'Missing SUPABASE_SERVICE_ROLE (or SUPABASE_SERVICE_ROLE_KEY) environment variable',
           request_id: requestId,
           error_class: 'Config'
         }),
