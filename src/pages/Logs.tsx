@@ -374,7 +374,7 @@ const { hydrationLogs, todayTotal: waterToday, addWater, removeWater, loadHydrat
                 Nutrition Totals
               </CardTitle>
               <CardDescription>
-                {totals.meals_count} meal{totals.meals_count !== 1 ? 's' : ''} logged
+                {totals.meals_count} dish{totals.meals_count !== 1 ? 'es' : ''} logged
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
