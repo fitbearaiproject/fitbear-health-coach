@@ -8,6 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { ImageProcessor, ScannerDiagnostics, MealScanRequest } from '@/lib/imageProcessor';
 import { Camera, Loader2, Upload, X, Plus, ImageIcon, Clock } from 'lucide-react';
 
 interface DishItem {
@@ -54,17 +55,36 @@ export default function MealScanner() {
   const [isLogging, setIsLogging] = useState(false);
   const [recentMeals, setRecentMeals] = useState<RecentMeal[]>([]);
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string>('');
+  const [diagnostics, setDiagnostics] = useState<ScannerDiagnostics | null>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { user } = useAuth();
   const { toast } = useToast();
 
-  // Load recent meals on component mount
+  // Load user profile and recent meals
   useEffect(() => {
     if (user) {
+      loadUserProfile();
       loadRecentMeals();
     }
   }, [user]);
+
+  const loadUserProfile = async () => {
+    if (!user) return;
+    
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      setUserProfile(profile);
+    } catch (error) {
+      console.error('Error loading profile:', error);
+    }
+  };
 
   const loadRecentMeals = async () => {
     if (!user) return;
@@ -148,39 +168,75 @@ export default function MealScanner() {
   };
 
   const analyzeMeal = async () => {
-    if (!selectedImage || !user) return;
+    if (!selectedImage || !user || !userProfile) return;
 
     setIsAnalyzing(true);
     setIsUploading(true);
     setError('');
+    setDiagnostics(null);
 
     try {
-      // First upload image to storage
-      const imageUrl = await uploadImageToStorage(selectedImage);
-      setUploadedImageUrl(imageUrl);
+      // Process and upload image
+      const { signedUrl, originalSize, processedSize } = await ImageProcessor.processAndUpload(selectedImage);
+      setUploadedImageUrl(signedUrl);
       setIsUploading(false);
 
-      // Convert image to base64 for analysis
-      const base64Image = await convertToBase64(selectedImage);
+      // Build profile and targets data
+      const bps_profile = {
+        diet_type: userProfile.diet_type,
+        conditions: userProfile.conditions || [],
+        activity_level: userProfile.activity_level,
+        health_goals: userProfile.health_goals,
+        allergies: userProfile.allergies || [],
+        cuisines: userProfile.cuisines || []
+      };
+      
+      const targets = (userProfile.targets as any) || {};
+
+      const requestData: MealScanRequest = {
+        image_url: signedUrl,
+        bps_profile,
+        targets
+      };
+
+      console.log('Sending meal scan request:', { originalSize, processedSize });
 
       // Analyze the meal
       const { data, error: supabaseError } = await supabase.functions.invoke('meal-analyze', {
-        body: {
-          image_data: base64Image,
-          user_id: user.id
-        }
+        body: requestData
       });
+
+      // Cleanup uploaded image
+      setTimeout(() => ImageProcessor.cleanup(signedUrl), 5000);
 
       if (supabaseError) throw supabaseError;
 
       if (data.error) {
+        setDiagnostics({
+          request_id: data.request_id,
+          status: 'error',
+          latency_ms: data.latency_ms,
+          model: data.model || 'unknown',
+          error_class: data.error_class,
+          image_px: `${Math.round(processedSize / 1024)}KB`,
+          json_parse_ok: false
+        });
         throw new Error(data.error);
       }
+
+      setDiagnostics({
+        request_id: data.request_id,
+        status: data.status,
+        latency_ms: data.latency_ms,
+        model: data.model,
+        image_px: data.image_px,
+        json_parse_ok: data.json_parse_ok
+      });
 
       setAnalysis(data as AnalysisResult);
       toast({
         title: "Meal analyzed successfully!",
-        description: "Review the detected items below and log your meal.",
+        description: `Analysis completed in ${data.latency_ms}ms. Review the detected items below.`,
       });
 
     } catch (err) {
@@ -500,6 +556,22 @@ export default function MealScanner() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Diagnostics */}
+        {diagnostics && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="text-sm">Scan Diagnostics</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-muted-foreground space-y-1">
+              <p>Request ID: {diagnostics.request_id}</p>
+              <p>Status: {diagnostics.status} | Latency: {diagnostics.latency_ms}ms</p>
+              <p>Model: {diagnostics.model} | Image: {diagnostics.image_px}</p>
+              <p>JSON Parse: {diagnostics.json_parse_ok ? '✅' : '❌'}</p>
+              {diagnostics.error_class && <p>Error Class: {diagnostics.error_class}</p>}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

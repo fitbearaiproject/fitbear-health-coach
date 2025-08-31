@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { ImageProcessor, ScannerDiagnostics, MenuScanRequest } from '@/lib/imageProcessor';
 import { Upload, Camera, Loader2, ThumbsUp, AlertTriangle, X, Plus } from 'lucide-react';
 
 interface DishItem {
@@ -45,10 +46,33 @@ export default function MenuScanner() {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string>('');
   const [isLogging, setIsLogging] = useState<{ [key: string]: boolean }>({});
+  const [diagnostics, setDiagnostics] = useState<ScannerDiagnostics | null>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { user } = useAuth();
   const { toast } = useToast();
+
+  // Load user profile and targets
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!user) return;
+      
+      try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        
+        setUserProfile(profile);
+      } catch (error) {
+        console.error('Error loading profile:', error);
+      }
+    };
+    
+    loadProfile();
+  }, [user]);
 
   const handleImageSelect = (files: FileList) => {
     const fileArray = Array.from(files);
@@ -116,34 +140,71 @@ export default function MenuScanner() {
   };
 
   const analyzeMenu = async () => {
-    if (selectedImages.length === 0 || !user) return;
+    if (selectedImages.length === 0 || !user || !userProfile) return;
 
     setIsAnalyzing(true);
     setError('');
+    setDiagnostics(null);
 
     try {
-      // Convert all images to base64
-      const base64Images = await Promise.all(
-        selectedImages.map(image => convertToBase64(image))
-      );
+      // Process first image only for now (can be extended for multiple)
+      const { signedUrl, originalSize, processedSize } = await ImageProcessor.processAndUpload(selectedImages[0]);
+      
+      // Build profile and targets data
+      const bps_profile = {
+        diet_type: userProfile.diet_type,
+        conditions: userProfile.conditions || [],
+        activity_level: userProfile.activity_level,
+        health_goals: userProfile.health_goals,
+        allergies: userProfile.allergies || [],
+        cuisines: userProfile.cuisines || []
+      };
+      
+      const targets = (userProfile.targets as any) || {};
+
+      const requestData: MenuScanRequest = {
+        image_url: signedUrl,
+        bps_profile,
+        targets
+      };
+
+      console.log('Sending menu scan request:', { originalSize, processedSize });
 
       const { data, error: supabaseError } = await supabase.functions.invoke('menu-parse', {
-        body: {
-          images_data: base64Images,
-          user_id: user.id
-        }
+        body: requestData
       });
+
+      // Cleanup uploaded image
+      setTimeout(() => ImageProcessor.cleanup(signedUrl), 5000);
 
       if (supabaseError) throw supabaseError;
 
       if (data.error) {
+        setDiagnostics({
+          request_id: data.request_id,
+          status: 'error',
+          latency_ms: data.latency_ms,
+          model: data.model || 'unknown',
+          error_class: data.error_class,
+          image_px: `${Math.round(processedSize / 1024)}KB`,
+          json_parse_ok: false
+        });
         throw new Error(data.error);
       }
+
+      setDiagnostics({
+        request_id: data.request_id,
+        status: data.status,
+        latency_ms: data.latency_ms,
+        model: data.model,
+        image_px: data.image_px,
+        json_parse_ok: data.json_parse_ok
+      });
 
       setAnalysis(data as AnalysisResult);
       toast({
         title: "Menu analyzed successfully!",
-        description: `Analyzed ${selectedImages.length} image(s). Check out your personalized recommendations below.`,
+        description: `Analyzed menu in ${data.latency_ms}ms. Check out your personalized recommendations below.`,
       });
 
     } catch (err) {
@@ -476,6 +537,22 @@ export default function MenuScanner() {
               <p>Model: {analysis.model} | Images: {analysis.images_processed} | Latency: {analysis.latency_ms}ms | Request ID: {analysis.request_id}</p>
             </CardContent>
           </Card>
+
+          {/* Diagnostics */}
+          {diagnostics && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Scan Diagnostics</CardTitle>
+              </CardHeader>
+              <CardContent className="text-xs text-muted-foreground space-y-1">
+                <p>Request ID: {diagnostics.request_id}</p>
+                <p>Status: {diagnostics.status} | Latency: {diagnostics.latency_ms}ms</p>
+                <p>Model: {diagnostics.model} | Image: {diagnostics.image_px}</p>
+                <p>JSON Parse: {diagnostics.json_parse_ok ? '✅' : '❌'}</p>
+                {diagnostics.error_class && <p>Error Class: {diagnostics.error_class}</p>}
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
     </div>

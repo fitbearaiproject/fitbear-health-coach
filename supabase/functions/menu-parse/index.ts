@@ -2,152 +2,335 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 
+// Zod-like validation (lightweight version for Deno)
+interface BPSProfile {
+  diet_type?: string;
+  conditions?: string[];
+  activity_level?: string;
+  health_goals?: string;
+  allergies?: string[];
+  cuisines?: string[];
+}
+
+interface Targets {
+  calories_per_day?: number;
+  protein_g?: number;
+  carbs_g?: number;
+  fat_g?: number;
+  fiber_g?: number;
+}
+
+interface MenuParseRequest {
+  image_url: string;
+  bps_profile: BPSProfile;
+  targets: Targets;
+}
+
+interface MenuItem {
+  name: string;
+  portion: string;
+  kcal: number;
+  macros: {
+    protein_g: number;
+    carbs_g: number;
+    fat_g: number;
+    fiber_g: number;
+  };
+  vitamins: string[];
+  minerals: string[];
+  tags: string[];
+  bucket: "Top Picks" | "Alternates" | "To Avoid";
+}
+
+interface MenuParseResponse {
+  items: MenuItem[];
+  reasoning: string;
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+function validateRequest(body: any): MenuParseRequest {
+  if (!body || typeof body !== 'object') {
+    throw new Error('Request body must be an object');
+  }
+
+  if (!body.image_url || typeof body.image_url !== 'string') {
+    throw new Error('image_url is required and must be a string');
+  }
+
+  if (!body.bps_profile || typeof body.bps_profile !== 'object') {
+    throw new Error('bps_profile is required and must be an object');
+  }
+
+  if (!body.targets || typeof body.targets !== 'object') {
+    throw new Error('targets is required and must be an object');
+  }
+
+  return body as MenuParseRequest;
+}
+
+async function retryApiCall(fn: () => Promise<Response>, maxRetries = 1): Promise<Response> {
+  let lastError;
+  
+  for (let i = 0; i <= maxRetries; i++) {
+    try {
+      const response = await fn();
+      
+      if (response.status === 429 || (response.status >= 500 && response.status < 600)) {
+        if (i < maxRetries) {
+          // Exponential backoff
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+          continue;
+        }
+      }
+      
+      return response;
+    } catch (error) {
+      lastError = error;
+      if (i < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+        continue;
+      }
+    }
+  }
+  
+  throw lastError;
+}
+
 serve(async (req) => {
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { 
+      status: 204,
+      headers: corsHeaders 
+    });
   }
 
   const requestId = crypto.randomUUID();
   const startTime = Date.now();
 
   try {
-    const { images_data, user_id } = await req.json();
-    
-    if (!images_data || !Array.isArray(images_data) || images_data.length === 0 || !user_id) {
-      throw new Error('Images data array and user_id are required');
+    // Validate Content-Type
+    const contentType = req.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Content-Type must be application/json',
+          request_id: requestId,
+          error_class: 'DataContract'
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
-    if (images_data.length > 5) {
-      throw new Error('Maximum 5 images allowed');
+    // Parse and validate request
+    let requestData;
+    try {
+      const body = await req.json();
+      requestData = validateRequest(body);
+    } catch (error) {
+      return new Response(
+        JSON.stringify({ 
+          error: error.message,
+          request_id: requestId,
+          error_class: 'DataContract'
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
-    // Initialize Supabase client
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    const { image_url, bps_profile, targets } = requestData;
 
-    // Get user profile for context
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*, targets(*)')
-      .eq('user_id', user_id)
-      .maybeSingle();
+    // Build user context
+    const userContext = `User Profile:
+Diet: ${bps_profile.diet_type || 'Not specified'}
+Activity Level: ${bps_profile.activity_level || 'Not specified'}
+Health Goals: ${bps_profile.health_goals || 'Not specified'}
+Conditions: ${bps_profile.conditions?.join(', ') || 'None'}
+Allergies: ${bps_profile.allergies?.join(', ') || 'None'}
+Preferred Cuisines: ${bps_profile.cuisines?.join(', ') || 'All'}
 
-    // Build context from user profile
-    let userContext = "User Profile: ";
-    if (profile) {
-      userContext += `Diet: ${profile.diet_type || 'Not specified'}, `;
-      userContext += `Activity Level: ${profile.activity_level || 'Not specified'}, `;
-      userContext += `Health Goals: ${profile.health_goals || 'Not specified'}, `;
-      userContext += `Conditions: ${profile.conditions ? JSON.stringify(profile.conditions) : 'None'}. `;
-      
-      if (profile.targets) {
-        userContext += `Targets: Calories: ${profile.targets.calories_per_day || 'Not set'}, `;
-        userContext += `Protein: ${profile.targets.protein_g || 'Not set'}g. `;
-      }
-    }
+Targets:
+Daily Calories: ${targets.calories_per_day || 'Not set'}
+Protein: ${targets.protein_g || 'Not set'}g
+Carbs: ${targets.carbs_g || 'Not set'}g
+Fat: ${targets.fat_g || 'Not set'}g
+Fiber: ${targets.fiber_g || 'Not set'}g`;
 
-    // System prompt for menu analysis
     const systemPrompt = `You are Coach C, analyzing restaurant menu images for healthy recommendations.
 
-Analyze ALL the provided menu images and categorize dishes into:
+Analyze the provided menu image and categorize dishes into:
 1. **Top Picks** - Healthiest options aligned with user's profile
-2. **Alternates** - Moderate choices with modifications  
+2. **Alternates** - Moderate choices with potential modifications  
 3. **To Avoid** - High calorie/unhealthy options
 
-IMPORTANT: Analyze all ${images_data.length} images provided and combine findings into a single comprehensive analysis.
-
 For each dish, provide:
-- Name
-- Portion size (in Indian units: katori, roti, etc.)
+- Name (exact as shown on menu)
+- Portion size (in practical Indian units: katori, roti, piece, etc.)
 - Estimated calories
-- Macros (protein/carbs/fat in grams)
-- Key nutrients/vitamins when relevant
-- Health tags (high-protein, low-carb, etc.)
-- Brief reasoning for categorization
+- Complete macros (protein/carbs/fat/fiber in grams)
+- Key vitamins/minerals when significant
+- Health tags (high-protein, low-carb, gluten-free, etc.)
 
 ${userContext}
 
 Consider user's diet type, health conditions, and targets when categorizing.
 Use everyday Indian context and portions. Be practical and encouraging.
 
-Return as JSON:
+CRITICAL: Return ONLY valid JSON in this exact format:
 {
-  "top_picks": [{"name": "...", "portion": "...", "kcal": 000, "protein_g": 00, "carbs_g": 00, "fat_g": 00, "tags": ["..."], "reasoning": "..."}],
-  "alternates": [...],
-  "to_avoid": [...],
-  "general_notes": "...",
-  "images_analyzed": ${images_data.length}
+  "items": [
+    {
+      "name": "Dish Name",
+      "portion": "1 katori (150ml)",
+      "kcal": 350,
+      "macros": {
+        "protein_g": 15,
+        "carbs_g": 45,
+        "fat_g": 12,
+        "fiber_g": 6
+      },
+      "vitamins": ["Vitamin A", "Vitamin C"],
+      "minerals": ["Iron", "Calcium"],
+      "tags": ["high-protein", "vegetarian"],
+      "bucket": "Top Picks"
+    }
+  ],
+  "reasoning": "Overall analysis of menu and recommendations based on user profile"
 }`;
 
-    // Prepare parts array with text and all images
-    const parts = [{ text: systemPrompt }];
-    
-    // Add all images to the parts array
-    images_data.forEach((imageData: string, index: number) => {
-      parts.push({
-        inline_data: {
-          mime_type: "image/jpeg",
-          data: imageData
-        }
+    // Get image dimensions/metadata for diagnostics
+    let imagePx = 'unknown';
+    try {
+      const imageResponse = await fetch(image_url, { method: 'HEAD' });
+      const contentLength = imageResponse.headers.get('content-length');
+      if (contentLength) {
+        imagePx = `${Math.round(parseInt(contentLength) / 1024)}KB`;
+      }
+    } catch (error) {
+      console.log('Could not get image metadata:', error.message);
+    }
+
+    // Call Gemini API with proper format and retry logic
+    const geminiResponse = await retryApiCall(async () => {
+      return await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${Deno.env.get('GOOGLE_API_KEY')}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        signal: AbortSignal.timeout(8000), // 8s timeout
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: systemPrompt },
+              { text: 'Return only valid JSON matching the specified contract.' },
+              { text: userContext },
+              { 
+                file_data: {
+                  mime_type: "image/jpeg",
+                  file_uri: image_url
+                }
+              }
+            ]
+          }],
+          generationConfig: {
+            temperature: 0.3,
+            topK: 40,
+            topP: 0.8,
+            maxOutputTokens: 2048,
+            responseMimeType: "application/json"
+          }
+        }),
       });
     });
 
-    // Call Gemini API with multiple images
-    const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${Deno.env.get('GOOGLE_API_KEY')}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: parts
-          }
-        ],
-        generationConfig: {
-          temperature: 0.7,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 2048,
-        }
-      }),
-    });
-
     if (!geminiResponse.ok) {
-      throw new Error(`Gemini API error: ${geminiResponse.status}`);
+      const errorText = await geminiResponse.text();
+      const status = geminiResponse.status;
+      
+      if (status === 429) {
+        throw new Error('Rate limit exceeded. Please try again in a moment.');
+      } else if (status >= 500) {
+        throw new Error('Google AI service temporarily unavailable. Please try again.');
+      } else {
+        throw new Error(`Gemini API error: ${status} - ${errorText}`);
+      }
     }
 
     const geminiData = await geminiResponse.json();
     
     if (!geminiData.candidates || !geminiData.candidates[0]) {
-      throw new Error('No response from Gemini');
+      throw new Error('No response from Gemini AI');
     }
 
     const rawResponse = geminiData.candidates[0].content.parts[0].text;
     
-    // Parse JSON response
-    let parsedData;
+    // Parse JSON response with robust error handling
+    let parsedData: MenuParseResponse;
+    let jsonParseOk = true;
+    
     try {
-      // Extract JSON from response if wrapped in markdown
-      const jsonMatch = rawResponse.match(/```json\n([\s\S]*?)\n```/) || rawResponse.match(/\{[\s\S]*\}/);
-      const jsonString = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : rawResponse;
-      parsedData = JSON.parse(jsonString);
+      // Try parsing as direct JSON first
+      parsedData = JSON.parse(rawResponse);
+      
+      // Validate response structure
+      if (!parsedData.items || !Array.isArray(parsedData.items)) {
+        throw new Error('Invalid response structure: items array required');
+      }
+      
     } catch (parseError) {
-      // Fallback: return raw response if JSON parsing fails
-      parsedData = {
-        top_picks: [],
-        alternates: [],
-        to_avoid: [],
-        general_notes: rawResponse,
-        parsing_error: true
-      };
+      jsonParseOk = false;
+      
+      // Try extracting JSON from markdown or other formatting
+      const jsonMatch = rawResponse.match(/```json\n([\s\S]*?)\n```/) || 
+                       rawResponse.match(/\{[\s\S]*\}/);
+      
+      if (jsonMatch) {
+        try {
+          const jsonString = jsonMatch[1] || jsonMatch[0];
+          parsedData = JSON.parse(jsonString);
+          jsonParseOk = true;
+        } catch (secondParseError) {
+          // Return error with model text for debugging
+          return new Response(
+            JSON.stringify({ 
+              error: 'Failed to parse JSON response from AI model',
+              request_id: requestId,
+              error_class: 'DataContract',
+              model_response: rawResponse.substring(0, 500),
+              latency_ms: Date.now() - startTime
+            }),
+            { 
+              status: 422, 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+            }
+          );
+        }
+      } else {
+        return new Response(
+          JSON.stringify({ 
+            error: 'No valid JSON found in AI response',
+            request_id: requestId,
+            error_class: 'DataContract',
+            model_response: rawResponse.substring(0, 500),
+            latency_ms: Date.now() - startTime
+          }),
+          { 
+            status: 422, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
     }
 
     const latencyMs = Date.now() - startTime;
@@ -155,11 +338,12 @@ Return as JSON:
     return new Response(
       JSON.stringify({ 
         request_id: requestId,
-        analysis: parsedData,
-        model: 'gemini-2.0-flash-exp',
+        status: 'success',
         latency_ms: latencyMs,
-        user_context: userContext,
-        images_processed: images_data.length
+        model: 'gemini-2.0-flash',
+        image_px: imagePx,
+        json_parse_ok: jsonParseOk,
+        analysis: parsedData
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -168,19 +352,34 @@ Return as JSON:
     console.error('Error in menu-parse function:', error);
     const latencyMs = Date.now() - startTime;
     
+    // Classify error types
+    let errorClass = 'Logic';
+    let statusCode = 500;
+    
+    if (error.message.includes('API key') || error.message.includes('auth')) {
+      errorClass = 'Auth';
+      statusCode = 401;
+    } else if (error.message.includes('rate limit') || error.message.includes('429')) {
+      errorClass = 'RateLimit';
+      statusCode = 429;
+    } else if (error.message.includes('network') || error.message.includes('fetch') || 
+               error.message.includes('temporarily unavailable')) {
+      errorClass = 'Network';
+      statusCode = 503;
+    } else if (error.message.includes('timeout')) {
+      errorClass = 'Network';
+      statusCode = 408;
+    }
+    
     return new Response(
       JSON.stringify({ 
         error: error.message,
         request_id: requestId,
         latency_ms: latencyMs,
-        error_class: error.message.includes('API key') || error.message.includes('auth') ? 'Auth' :
-                     error.message.includes('429') ? 'RateLimit' :
-                     error.message.includes('network') || error.message.includes('fetch') ? 'Network' :
-                     error.message.includes('required') || error.message.includes('validation') ? 'DataContract' :
-                     'Logic'
+        error_class: errorClass
       }),
       {
-        status: 500,
+        status: statusCode,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     );

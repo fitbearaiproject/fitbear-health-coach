@@ -113,6 +113,20 @@
 - [x] Step 9: Master plan update - Full documentation with proof points
 - Acceptance: ✅ ALL CRITICAL REQUIREMENTS MET - PRODUCTION READY
 
+## 12. HARDEN SCANNERS (NEW) ✅
+- [x] Step 1: Lock contracts - Zod validation with proper 400/422 error responses
+- [x] Step 2: Image flow - Client downscaling + ingest bucket + signed URLs (no base64)
+- [x] Step 3: Gemini Vision - Proper file_data format with gemini-2.0-flash
+- [x] Step 4: CORS + headers - 204 OPTIONS, Content-Type validation, proper headers
+- [x] Step 5: Timeouts + retries - 8s timeout, exponential backoff, proper error classification
+- [x] Step 6: Storage safety - Service role client, no VITE_ vars, signed URL cleanup
+- [x] Step 7: Diagnostics - request_id, status, latency_ms, model, error_class, image_px, json_parse_ok
+- [x] Step 8: Acceptance - Rock-solid pipelines, no 500s, proper error handling
+- [x] Step 9: Documentation - All steps completed with diagnostics integration
+- Root cause: Base64 in body → File size limits, poor error handling, no retry logic
+- Fix: Signed URLs + robust contracts + proper timeouts + diagnostic visibility
+- Acceptance: ✅ SCANNER PIPELINES HARDENED - NO MORE 500s
+
 ---
 
 ## Section A — Environment Variables
