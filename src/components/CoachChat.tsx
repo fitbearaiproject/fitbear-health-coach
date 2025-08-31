@@ -30,6 +30,9 @@ interface DiagnosticData {
   stt_language?: string;
   stt_confidence?: number;
   tts_voice?: string;
+  tts_status?: string;
+  tts_latency_ms?: number;
+  tts_bytes?: number;
   model?: string;
 }
 
@@ -54,6 +57,9 @@ export function CoachChat({ userId }: CoachChatProps) {
   const audioChunksRef = useRef<Blob[]>([]);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const ttsAbortRef = useRef<AbortController | null>(null);
+  const ttsBytesRef = useRef<number>(0);
+  const ttsObjectUrlRef = useRef<string | null>(null);
 
   // Check auth status
   useEffect(() => {
@@ -206,63 +212,189 @@ export function CoachChat({ userId }: CoachChatProps) {
   };
 
   const playAudio = async (text: string) => {
+    // Helper: strip markdown/HTML/SSML from text
+    const sanitizeForTTS = (t: string) =>
+      t
+        .replace(/```[\s\S]*?```/g, '')
+        .replace(/[*_`~>#\[\]()!-]/g, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const SUPABASE_URL = "https://xnncvfuamecmjvvoaywz.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhubmN2ZnVhbWVjbWp2dm9heXd6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY0NDkwMzUsImV4cCI6MjA3MjAyNTAzNX0.mJttLdAFIT0nFDGF3cj1mBYhqy5o7xUMUSfePILllGM";
+
+    const start = performance.now();
+    const clean = sanitizeForTTS(text);
+
+    // Stop current audio/stream if any
+    if (ttsAbortRef.current) {
+      ttsAbortRef.current.abort();
+      ttsAbortRef.current = null;
+    }
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current = null;
+    }
+
+    // Try low-latency streaming first via direct fetch
     try {
       setIsPlaying(true);
-      
-      const { data, error } = await supabase.functions.invoke('deepgram-tts', {
-        body: { 
-          text,
-          voice: 'aura-2-hermes-en'
-        }
+      ttsBytesRef.current = 0;
+
+      const ctrl = new AbortController();
+      ttsAbortRef.current = ctrl;
+
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/deepgram-tts-stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+          ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({ text: clean, voice: 'aura-2-hermes-en' }),
+        signal: ctrl.signal,
       });
 
+      if (!res.ok || !res.body || !res.headers.get('Content-Type')?.includes('audio/mpeg')) {
+        throw new Error(`Streaming TTS unavailable (${res.status})`);
+      }
+
+      // Stream into MediaSource for instant playback
+      const mediaSource = new MediaSource();
+      const audioEl = new Audio();
+      currentAudioRef.current = audioEl;
+
+      const objectUrl = URL.createObjectURL(mediaSource);
+      ttsObjectUrlRef.current = objectUrl;
+      audioEl.src = objectUrl;
+
+      let sourceBuffer: SourceBuffer | null = null;
+      let firstAppend = true;
+      const queue: Uint8Array[] = [];
+
+      mediaSource.addEventListener('sourceopen', async () => {
+        try {
+          sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
+        } catch (e) {
+          // Fallback if SourceBuffer not supported
+          throw e;
+        }
+
+        const reader = res.body!.getReader();
+        const pump = async () => {
+          const { done, value } = await reader.read();
+          if (done) {
+            if (!mediaSource.readyState.includes('ended')) {
+              mediaSource.endOfStream();
+            }
+            return;
+          }
+
+          if (value) {
+            ttsBytesRef.current += value.byteLength;
+            const chunk = new Uint8Array(value);
+            if (sourceBuffer!.updating || queue.length) {
+              queue.push(chunk);
+            } else {
+              sourceBuffer!.appendBuffer(chunk);
+            }
+
+            if (firstAppend) {
+              firstAppend = false;
+              const latency = Math.round(performance.now() - start);
+              setLastDiagnostics(prev => ({ ...prev, tts_status: 'streaming', tts_latency_ms: latency, tts_voice: res.headers.get('X-Voice-Model') || 'aura-2-hermes-en' } as any));
+              // Start playback ASAP
+              audioEl.play().catch(() => {/* ignore */});
+            }
+          }
+
+          return pump();
+        };
+
+        sourceBuffer!.addEventListener('updateend', () => {
+          if (queue.length && sourceBuffer && !sourceBuffer.updating) {
+            sourceBuffer.appendBuffer(queue.shift()!);
+          }
+        });
+
+        pump().catch(err => {
+          console.error('Streaming pump error:', err);
+        });
+      });
+
+      audioEl.onended = () => {
+        setIsPlaying(false);
+        URL.revokeObjectURL(objectUrl);
+        setLastDiagnostics(prev => ({ ...prev, tts_bytes: ttsBytesRef.current } as any));
+      };
+
+      audioEl.onerror = () => {
+        setIsPlaying(false);
+        URL.revokeObjectURL(objectUrl);
+        setLastDiagnostics(prev => ({ ...prev, tts_status: 'error' } as any));
+        toast({ title: 'Audio Error', description: 'Playback error', variant: 'destructive' });
+      };
+
+      return; // success
+    } catch (err) {
+      console.warn('Streaming TTS failed, falling back to REST:', err);
+      // Continue to REST fallback below
+    }
+
+    // REST fallback (base64)
+    try {
+      setIsPlaying(true);
+      const t0 = performance.now();
+      const { data, error } = await supabase.functions.invoke('deepgram-tts', {
+        body: { text: clean, voice: 'aura-2-hermes-en' }
+      });
       if (error) throw error;
 
-      // Stop current audio if playing
       if (currentAudioRef.current) {
         currentAudioRef.current.pause();
         currentAudioRef.current = null;
       }
 
-      // Create and play new audio
       const audio = new Audio(`data:audio/mpeg;base64,${data.audioContent}`);
       currentAudioRef.current = audio;
-      
+
+      audio.onplay = () => {
+        const latency = Math.round(performance.now() - t0);
+        setLastDiagnostics(prev => ({ ...prev, tts_status: 'rest', tts_latency_ms: latency, tts_voice: data.voice_used, tts_bytes: data.audioContent?.length || 0 } as any));
+      };
+
       audio.onended = () => setIsPlaying(false);
       audio.onerror = () => {
         setIsPlaying(false);
-        toast({
-          title: "Audio Error",
-          description: "Failed to play audio response",
-          variant: "destructive",
-        });
+        toast({ title: 'Audio Error', description: 'Failed to play audio response', variant: 'destructive' });
       };
 
       await audio.play();
-
-      // Update TTS diagnostics
-      setLastDiagnostics(prev => ({
-        ...prev,
-        tts_voice: data.voice_used
-      }));
-
     } catch (error) {
       console.error('Error playing audio:', error);
       setIsPlaying(false);
-      toast({
-        title: "Audio Error",
-        description: "Failed to generate audio response",
-        variant: "destructive",
-      });
+      setLastDiagnostics(prev => ({ ...prev, tts_status: 'error', error_class: 'Network' } as any));
+      toast({ title: 'Audio Error', description: 'Failed to generate audio response', variant: 'destructive' });
     }
   };
 
   const stopAudio = () => {
+    if (ttsAbortRef.current) {
+      try { ttsAbortRef.current.abort(); } catch {}
+      ttsAbortRef.current = null;
+    }
     if (currentAudioRef.current) {
       currentAudioRef.current.pause();
       currentAudioRef.current = null;
-      setIsPlaying(false);
     }
+    if (ttsObjectUrlRef.current) {
+      try { URL.revokeObjectURL(ttsObjectUrlRef.current); } catch {}
+      ttsObjectUrlRef.current = null;
+    }
+    setIsPlaying(false);
   };
 
   const startRecording = async () => {
@@ -426,11 +558,20 @@ export function CoachChat({ userId }: CoachChatProps) {
               {lastDiagnostics.stt_language && (
                 <div>STT Language: {lastDiagnostics.stt_language}</div>
               )}
-              {lastDiagnostics.stt_confidence && (
+              {typeof lastDiagnostics.stt_confidence !== 'undefined' && (
                 <div>STT Confidence: {(lastDiagnostics.stt_confidence * 100).toFixed(1)}%</div>
               )}
               {lastDiagnostics.tts_voice && (
                 <div>TTS Voice: {lastDiagnostics.tts_voice}</div>
+              )}
+              {lastDiagnostics.tts_status && (
+                <div>TTS Status: {lastDiagnostics.tts_status}</div>
+              )}
+              {typeof lastDiagnostics.tts_latency_ms !== 'undefined' && (
+                <div>TTS Start: {lastDiagnostics.tts_latency_ms}ms</div>
+              )}
+              {typeof lastDiagnostics.tts_bytes !== 'undefined' && (
+                <div>TTS Bytes: {lastDiagnostics.tts_bytes}</div>
               )}
               {lastDiagnostics.error_class && (
                 <div className="col-span-2 text-red-600">
