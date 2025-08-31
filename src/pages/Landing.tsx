@@ -1,28 +1,15 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { 
-  MessageCircle, 
-  Camera, 
-  Utensils, 
-  Heart, 
-  Shield, 
-  Clock,
-  Star,
-  CheckCircle,
-  Mic,
-  Phone,
-  MessageSquare
-} from "lucide-react";
+import { MessageCircle, Camera, Utensils, Heart, Shield, Clock, Star, CheckCircle, Mic, Phone, MessageSquare } from "lucide-react";
 import fitbearLogo from "@/assets/fitbear-logo.png";
-
 interface LandingProps {
   onGetStarted: () => void;
 }
-
-export default function Landing({ onGetStarted }: LandingProps) {
-  return (
-    <div className="min-h-screen bg-background">
+export default function Landing({
+  onGetStarted
+}: LandingProps) {
+  return <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
@@ -44,21 +31,17 @@ export default function Landing({ onGetStarted }: LandingProps) {
       <section className="py-16 px-4">
         <div className="container mx-auto max-w-4xl">
           <div className="text-center space-y-6">
-            <h2 className="text-3xl md:text-5xl font-bold leading-tight">
-              Your AI Health & Nutrition Coach
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Chat or speak with Coach C to get personal guidance on meals, workouts,
-              and everyday choices—built for Indian food and routines.
-            </p>
+            <h2 className="text-3xl md:text-5xl font-bold leading-tight">Your AI Health & Nutrition Coach
+powered by The Fit Bear philosophy</h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">Chat or speak with Coach C to get personal guidance on meals, workouts, and everyday choices—built for Indian food and routines but catering to a global audience. Get validated expert advice on your device.</p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
               <Button size="lg" className="bg-gradient-primary px-8" onClick={onGetStarted}>
                 Get Started
               </Button>
               <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2"><Mic className="w-4 h-4"/>Voice</div>
-                <div className="flex items-center gap-2"><MessageCircle className="w-4 h-4"/>Chat</div>
-                <div className="flex items-center gap-2"><Camera className="w-4 h-4"/>Photo</div>
+                <div className="flex items-center gap-2"><Mic className="w-4 h-4" />Voice</div>
+                <div className="flex items-center gap-2"><MessageCircle className="w-4 h-4" />Chat</div>
+                <div className="flex items-center gap-2"><Camera className="w-4 h-4" />Photo</div>
               </div>
             </div>
           </div>
@@ -110,18 +93,14 @@ export default function Landing({ onGetStarted }: LandingProps) {
                 <span className="text-2xl font-bold text-primary-foreground">1</span>
               </div>
               <h3 className="text-xl font-semibold">Create Profile</h3>
-              <p className="text-muted-foreground">
-                Goals, health flags, veg/Jain preferences, and your schedule.
-              </p>
+              <p className="text-muted-foreground">Goals, health flags, Veg/Jain preferences, and your schedule.</p>
             </div>
             <div className="text-center space-y-4">
               <div className="w-16 h-16 bg-gradient-primary rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl font-bold text-primary-foreground">2</span>
               </div>
               <h3 className="text-xl font-semibold">Talk to Coach C</h3>
-              <p className="text-muted-foreground">
-                Text or voice chat to get your personalized daily plan.
-              </p>
+              <p className="text-muted-foreground">Text or voice chat to get Coach C to give you expert guidance.</p>
             </div>
             <div className="text-center space-y-4">
               <div className="w-16 h-16 bg-gradient-primary rounded-full flex items-center justify-center mx-auto mb-4">
@@ -226,9 +205,7 @@ export default function Landing({ onGetStarted }: LandingProps) {
               <CardContent className="space-y-4">
                 <Heart className="w-8 h-8 text-primary" />
                 <h3 className="font-semibold">60-sec Health Checkup</h3>
-                <p className="text-sm text-muted-foreground">
-                  Quick quiz returns a free 7-day starter plan
-                </p>
+                <p className="text-sm text-muted-foreground">Get calories, macros and portion guidance for your meals</p>
                 <Button className="w-full bg-gradient-primary" onClick={onGetStarted}>
                   Start Checkup
                 </Button>
@@ -272,9 +249,7 @@ export default function Landing({ onGetStarted }: LandingProps) {
                   "Lost 5kg in 2 months while keeping my street food cravings satisfied. Coach C gets Indian food!"
                 </p>
                 <div className="flex text-yellow-500">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} className="w-4 h-4 fill-current" />
-                  ))}
+                  {[...Array(5)].map((_, i) => <Star key={i} className="w-4 h-4 fill-current" />)}
                 </div>
               </CardContent>
             </Card>
@@ -294,9 +269,7 @@ export default function Landing({ onGetStarted }: LandingProps) {
                   "Busy consultant, vegetarian; -3.2 kg in 28 days without giving up biryani. The voice chat kept me going!"
                 </p>
                 <div className="flex text-yellow-500">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} className="w-4 h-4 fill-current" />
-                  ))}
+                  {[...Array(5)].map((_, i) => <Star key={i} className="w-4 h-4 fill-current" />)}
                 </div>
                 <Badge variant="secondary">Featured Case Study</Badge>
               </CardContent>
@@ -317,9 +290,7 @@ export default function Landing({ onGetStarted }: LandingProps) {
                   "The meal scanner is magic! Finally know what I'm eating at office canteen. Perfect for my diabetes management."
                 </p>
                 <div className="flex text-yellow-500">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} className="w-4 h-4 fill-current" />
-                  ))}
+                  {[...Array(5)].map((_, i) => <Star key={i} className="w-4 h-4 fill-current" />)}
                 </div>
               </CardContent>
             </Card>
@@ -491,11 +462,7 @@ export default function Landing({ onGetStarted }: LandingProps) {
             Join thousands who've transformed their health with Coach C
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button 
-              size="lg" 
-              className="bg-gradient-primary text-lg px-8 py-6"
-              onClick={onGetStarted}
-            >
+            <Button size="lg" className="bg-gradient-primary text-lg px-8 py-6" onClick={onGetStarted}>
               <Heart className="w-5 h-5 mr-2" />
               Start free health checkup
             </Button>
@@ -523,6 +490,5 @@ export default function Landing({ onGetStarted }: LandingProps) {
           </div>
         </div>
       </footer>
-    </div>
-  );
+    </div>;
 }
