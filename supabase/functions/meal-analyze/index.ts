@@ -31,12 +31,12 @@ interface MealDish {
   name: string;
   portion: string;
   kcal: number;
-  macros: {
-    protein_g: number;
-    carbs_g: number;
-    fat_g: number;
-    fiber_g: number;
-  };
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fiber_g: number;
+  description: string;
+  coach_note: string;
   flags: string[];
 }
 
@@ -47,7 +47,9 @@ interface MealAnalyzeResponse {
     protein_g: number;
     carbs_g: number;
     fat_g: number;
+    fiber_g: number;
   };
+  overall_note?: string;
 }
 
 const corsHeaders = {
@@ -238,7 +240,7 @@ Carbs: ${targets.carbs_g || 'Not set'}g
 Fat: ${targets.fat_g || 'Not set'}g
 Fiber: ${targets.fiber_g || 'Not set'}g`;
 
-    const systemPrompt = `You are Coach C, analyzing a meal photo for nutrition tracking.
+const systemPrompt = `You are Coach C, analyzing a meal photo for nutrition tracking.
 
 Analyze this meal image and detect all visible food items with their estimated portions and nutrition.
 
@@ -246,7 +248,9 @@ For each dish/item detected, provide:
 - Name (in everyday Indian terms)
 - Portion size (using Indian household units: katori, roti count/diameter, ladle, handful, etc.)
 - Estimated calories
-- Complete macros (protein/carbs/fat/fiber in grams)
+- Complete macros (protein/carbs/fat/fiber in grams) - provide individual values, not nested
+- Description (1-2 line plain English description of the dish)
+- Coach Note (personalized advice/guidance specific to user's profile and goals)
 - Health flags (high-protein, high-fiber, fried, sugary, etc.)
 
 ${userContext}
@@ -254,6 +258,7 @@ ${userContext}
 Consider user's dietary preferences and health conditions.
 Be practical and realistic with portion estimates.
 If multiple items look similar, group them as one entry.
+Provide personalized coaching advice based on the user's profile and targets.
 
 CRITICAL: Return ONLY valid JSON in this exact format:
 {
@@ -262,12 +267,12 @@ CRITICAL: Return ONLY valid JSON in this exact format:
       "name": "Dal Tadka",
       "portion": "1 katori (150ml)",
       "kcal": 120,
-      "macros": {
-        "protein_g": 8,
-        "carbs_g": 18,
-        "fat_g": 3,
-        "fiber_g": 5
-      },
+      "protein_g": 8,
+      "carbs_g": 18,
+      "fat_g": 3,
+      "fiber_g": 5,
+      "description": "Traditional lentil curry with tempered spices",
+      "coach_note": "Great protein choice! This fits your daily targets well",
       "flags": ["high-protein", "comfort-food"]
     }
   ],
@@ -275,8 +280,10 @@ CRITICAL: Return ONLY valid JSON in this exact format:
     "total_kcal": 450,
     "protein_g": 25,
     "carbs_g": 55,
-    "fat_g": 15
-  }
+    "fat_g": 15,
+    "fiber_g": 12
+  },
+  "overall_note": "Overall Coach C guidance about this meal for the user"
 }`;
 
     // Fetch image and convert to base64 for inline_data

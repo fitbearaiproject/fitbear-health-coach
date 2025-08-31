@@ -5,11 +5,14 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { ImageProcessor, ScannerDiagnostics, MenuScanRequest } from '@/lib/imageProcessor';
-import { Upload, Camera, Loader2, ThumbsUp, AlertTriangle, X, Plus } from 'lucide-react';
+import { Upload, Camera, Loader2, ThumbsUp, AlertTriangle, X, Plus, Info } from 'lucide-react';
 
 interface DishItem {
   name: string;
@@ -18,6 +21,9 @@ interface DishItem {
   protein_g: number;
   carbs_g: number;
   fat_g: number;
+  fiber_g: number;
+  description: string;
+  coach_note: string;
   tags: string[];
   reasoning: string;
 }
@@ -27,6 +33,7 @@ interface MenuAnalysis {
   alternates: DishItem[];
   to_avoid: DishItem[];
   general_notes: string;
+  overall_note?: string;
   parsing_error?: boolean;
 }
 
@@ -39,15 +46,23 @@ interface AnalysisResult {
   images_processed: number;
 }
 
+interface SelectedDish {
+  dish: DishItem;
+  category: string;
+  portion: string;
+  quantity: number;
+}
+
 export default function MenuScanner() {
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string>('');
-  const [isLogging, setIsLogging] = useState<{ [key: string]: boolean }>({});
+  const [isLogging, setIsLogging] = useState(false);
   const [diagnostics, setDiagnostics] = useState<ScannerDiagnostics | null>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [selectedDishes, setSelectedDishes] = useState<{ [key: string]: SelectedDish }>({});
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { user } = useAuth();
@@ -93,6 +108,7 @@ export default function MenuScanner() {
     setSelectedImages(fileArray);
     setError('');
     setAnalysis(null);
+    setSelectedDishes({});
 
     // Create previews
     const previews: string[] = [];
@@ -122,21 +138,8 @@ export default function MenuScanner() {
     setImagePreviews(newPreviews);
     if (newImages.length === 0) {
       setAnalysis(null);
+      setSelectedDishes({});
     }
-  };
-
-  const convertToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => {
-        const base64 = reader.result as string;
-        // Remove data:image/jpeg;base64, prefix
-        const base64Data = base64.split(',')[1];
-        resolve(base64Data);
-      };
-      reader.onerror = error => reject(error);
-    });
   };
 
   const analyzeMenu = async () => {
@@ -220,79 +223,164 @@ export default function MenuScanner() {
     }
   };
 
-  const logDishToMeals = async (dish: DishItem, category: string) => {
-    if (!user) return;
-
+  const handleDishSelection = (dish: DishItem, category: string, checked: boolean) => {
     const dishKey = `${dish.name}-${category}`;
-    setIsLogging(prev => ({ ...prev, [dishKey]: true }));
+    
+    if (checked) {
+      setSelectedDishes(prev => ({
+        ...prev,
+        [dishKey]: {
+          dish,
+          category,
+          portion: dish.portion,
+          quantity: 1
+        }
+      }));
+    } else {
+      setSelectedDishes(prev => {
+        const newSelected = { ...prev };
+        delete newSelected[dishKey];
+        return newSelected;
+      });
+    }
+  };
+
+  const updateDishPortion = (dishKey: string, portion: string) => {
+    setSelectedDishes(prev => ({
+      ...prev,
+      [dishKey]: {
+        ...prev[dishKey],
+        portion
+      }
+    }));
+  };
+
+  const updateDishQuantity = (dishKey: string, quantity: number) => {
+    setSelectedDishes(prev => ({
+      ...prev,
+      [dishKey]: {
+        ...prev[dishKey],
+        quantity: Math.max(0.1, quantity)
+      }
+    }));
+  };
+
+  const logSelectedDishes = async () => {
+    if (!user || Object.keys(selectedDishes).length === 0) return;
+
+    setIsLogging(true);
 
     try {
-      const { error } = await supabase
-        .from('meal_logs')
-        .insert({
-          user_id: user.id,
-          dish_name: dish.name,
-          quantity: 1,
-          unit: dish.portion,
-          kcal: dish.kcal,
-          protein_g: dish.protein_g,
-          carbs_g: dish.carbs_g,
-          fat_g: dish.fat_g,
-          notes: `${category} - ${dish.reasoning}`,
-          source: 'menu',
-          meal_time: new Date().toISOString(),
-          meal_day_ist: new Date().toISOString().split('T')[0]
-        });
+      const mealTime = new Date().toISOString();
+      const mealDay = new Date().toISOString().split('T')[0];
 
-      if (error) throw error;
+      for (const [dishKey, selectedDish] of Object.entries(selectedDishes)) {
+        const { dish, category, quantity } = selectedDish;
+        
+        // Calculate macros based on quantity
+        const scaledKcal = Math.round(dish.kcal * quantity);
+        const scaledProtein = Math.round(dish.protein_g * quantity * 10) / 10;
+        const scaledCarbs = Math.round(dish.carbs_g * quantity * 10) / 10;
+        const scaledFat = Math.round(dish.fat_g * quantity * 10) / 10;
+        const scaledFiber = Math.round(dish.fiber_g * quantity * 10) / 10;
+
+        const { error } = await supabase
+          .from('meal_logs')
+          .insert({
+            user_id: user.id,
+            dish_name: dish.name,
+            quantity,
+            unit: selectedDish.portion,
+            kcal: scaledKcal,
+            protein_g: scaledProtein,
+            carbs_g: scaledCarbs,
+            fat_g: scaledFat,
+            fiber_g: scaledFiber,
+            notes: `${category} - ${dish.coach_note}`,
+            source: 'menu',
+            meal_time: mealTime,
+            meal_day_ist: mealDay
+          });
+
+        if (error) throw error;
+      }
 
       toast({
-        title: "Dish logged!",
-        description: `${dish.name} has been added to your meal log.`,
+        title: "Dishes logged!",
+        description: `Successfully logged ${Object.keys(selectedDishes).length} dishes to your meal diary.`,
       });
 
+      setSelectedDishes({});
+
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to log dish';
+      const errorMessage = err instanceof Error ? err.message : 'Failed to log dishes';
       toast({
         title: "Logging failed",
         description: errorMessage,
         variant: "destructive",
       });
     } finally {
-      setIsLogging(prev => ({ ...prev, [dishKey]: false }));
+      setIsLogging(false);
     }
   };
 
   const DishCard = ({ dish, category, icon }: { dish: DishItem; category: string; icon: React.ReactNode }) => {
     const dishKey = `${dish.name}-${category}`;
-    const isLoggingThis = isLogging[dishKey];
+    const isSelected = dishKey in selectedDishes;
+    const selectedDish = selectedDishes[dishKey];
 
     return (
       <Card className="mb-4">
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-2">
+              <Checkbox 
+                checked={isSelected}
+                onCheckedChange={(checked) => handleDishSelection(dish, category, checked as boolean)}
+              />
               {icon}
               <CardTitle className="text-lg">{dish.name}</CardTitle>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => logDishToMeals(dish, category)}
-              disabled={isLoggingThis}
-              className="flex items-center gap-1"
-            >
-              {isLoggingThis ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Plus className="h-3 w-3" />
-              )}
-              Log this
-            </Button>
           </div>
-          <CardDescription>{dish.reasoning}</CardDescription>
+          {dish.description && (
+            <CardDescription className="mt-2">{dish.description}</CardDescription>
+          )}
+          {dish.coach_note && (
+            <div className="flex items-start gap-2 mt-2 p-2 bg-blue-50 rounded-md">
+              <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-blue-700 italic">{dish.coach_note}</p>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
+          {isSelected && (
+            <div className="mb-4 p-3 bg-gray-50 rounded-md space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor={`portion-${dishKey}`} className="text-xs">Portion</Label>
+                  <Input
+                    id={`portion-${dishKey}`}
+                    value={selectedDish.portion}
+                    onChange={(e) => updateDishPortion(dishKey, e.target.value)}
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor={`quantity-${dishKey}`} className="text-xs">Quantity</Label>
+                  <Input
+                    id={`quantity-${dishKey}`}
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    value={selectedDish.quantity}
+                    onChange={(e) => updateDishQuantity(dishKey, parseFloat(e.target.value) || 1)}
+                    className="h-8 text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+          
           <div className="grid grid-cols-2 gap-4 mb-3">
             <div>
               <p className="text-sm text-muted-foreground">Portion</p>
@@ -313,6 +401,10 @@ export default function MenuScanner() {
             <div>
               <p className="text-sm text-muted-foreground">Fat</p>
               <p className="font-medium">{dish.fat_g}g</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Fiber</p>
+              <p className="font-medium">{dish.fiber_g}g</p>
             </div>
           </div>
           {dish.tags.length > 0 && (
@@ -448,12 +540,40 @@ export default function MenuScanner() {
         </Alert>
       )}
 
+      {/* Selected Dishes Summary */}
+      {Object.keys(selectedDishes).length > 0 && (
+        <Card className="mb-6">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Selected Dishes ({Object.keys(selectedDishes).length})</CardTitle>
+              <CardDescription>
+                Review your selections before logging
+              </CardDescription>
+            </div>
+            <Button
+              onClick={logSelectedDishes}
+              disabled={isLogging}
+              className="flex items-center gap-2"
+            >
+              {isLogging ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              Log Selected Dishes
+            </Button>
+          </CardHeader>
+        </Card>
+      )}
+
       {/* Analysis Results */}
       {analysis && (
         <div className="space-y-6">
-          {analysis.analysis.general_notes && (
+          {(analysis.analysis.general_notes || analysis.analysis.overall_note) && (
             <Alert>
-              <AlertDescription>{analysis.analysis.general_notes}</AlertDescription>
+              <AlertDescription>
+                {analysis.analysis.overall_note || analysis.analysis.general_notes}
+              </AlertDescription>
             </Alert>
           )}
 
@@ -521,39 +641,48 @@ export default function MenuScanner() {
                 ))}
                 {analysis.analysis.to_avoid.length === 0 && (
                   <p className="text-muted-foreground text-center py-8">
-                    No dishes to avoid identified.
+                    No items to avoid identified.
                   </p>
                 )}
               </ScrollArea>
             </div>
           </div>
-
-          {/* Analysis Metadata */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Analysis Details</CardTitle>
-            </CardHeader>
-            <CardContent className="text-xs text-muted-foreground">
-              <p>Model: {analysis.model} | Images: {analysis.images_processed} | Latency: {analysis.latency_ms}ms | Request ID: {analysis.request_id}</p>
-            </CardContent>
-          </Card>
-
-          {/* Diagnostics */}
-          {diagnostics && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Scan Diagnostics</CardTitle>
-              </CardHeader>
-              <CardContent className="text-xs text-muted-foreground space-y-1">
-                <p>Request ID: {diagnostics.request_id}</p>
-                <p>Status: {diagnostics.status} | Latency: {diagnostics.latency_ms}ms</p>
-                <p>Model: {diagnostics.model} | Image: {diagnostics.image_px}</p>
-                <p>JSON Parse: {diagnostics.json_parse_ok ? '✅' : '❌'}</p>
-                {diagnostics.error_class && <p>Error Class: {diagnostics.error_class}</p>}
-              </CardContent>
-            </Card>
-          )}
         </div>
+      )}
+
+      {/* Diagnostics */}
+      {diagnostics && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-lg">Scan Diagnostics</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div>
+                <p className="text-muted-foreground">Request ID</p>
+                <p className="font-mono text-xs">{diagnostics.request_id}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Latency</p>
+                <p className="font-medium">{diagnostics.latency_ms}ms</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Model</p>
+                <p className="font-medium">{diagnostics.model}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">JSON Parse</p>
+                <p className="font-medium">
+                  {diagnostics.json_parse_ok ? (
+                    <span className="text-green-600">✓ Success</span>
+                  ) : (
+                    <span className="text-red-600">✗ Failed</span>
+                  )}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

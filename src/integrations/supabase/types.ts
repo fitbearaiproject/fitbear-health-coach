@@ -215,6 +215,7 @@ export type Database = {
           dish_name: string
           dish_name_ci: string | null
           fat_g: number | null
+          fiber_g: number | null
           id: string
           image_url: string | null
           kcal: number | null
@@ -233,6 +234,7 @@ export type Database = {
           dish_name: string
           dish_name_ci?: string | null
           fat_g?: number | null
+          fiber_g?: number | null
           id?: string
           image_url?: string | null
           kcal?: number | null
@@ -251,6 +253,7 @@ export type Database = {
           dish_name?: string
           dish_name_ci?: string | null
           fat_g?: number | null
+          fiber_g?: number | null
           id?: string
           image_url?: string | null
           kcal?: number | null

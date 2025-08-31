@@ -37,6 +37,8 @@ interface MenuItem {
     fat_g: number;
     fiber_g: number;
   };
+  description: string;
+  coach_note: string;
   vitamins: string[];
   minerals: string[];
   tags: string[];
@@ -46,6 +48,7 @@ interface MenuItem {
 interface MenuParseResponse {
   items: MenuItem[];
   reasoning: string;
+  overall_note?: string;
 }
 
 // UI format interfaces
@@ -56,6 +59,9 @@ interface DishItem {
   protein_g: number;
   carbs_g: number;
   fat_g: number;
+  fiber_g: number;
+  description: string;
+  coach_note: string;
   tags: string[];
   reasoning: string;
 }
@@ -65,6 +71,7 @@ interface MenuAnalysis {
   alternates: DishItem[];
   to_avoid: DishItem[];
   general_notes: string;
+  overall_note?: string;
 }
 
 const corsHeaders = {
@@ -232,7 +239,7 @@ Carbs: ${targets.carbs_g || 'Not set'}g
 Fat: ${targets.fat_g || 'Not set'}g
 Fiber: ${targets.fiber_g || 'Not set'}g`;
 
-    const systemPrompt = `You are Coach C, analyzing restaurant menu images for healthy recommendations.
+const systemPrompt = `You are Coach C, analyzing restaurant menu images for healthy recommendations.
 
 Analyze the provided menu image and categorize dishes into:
 1. **Top Picks** - Healthiest options aligned with user's profile
@@ -244,6 +251,8 @@ For each dish, provide:
 - Portion size (in practical Indian units: katori, roti, piece, etc.)
 - Estimated calories
 - Complete macros (protein/carbs/fat/fiber in grams)
+- Description (1-2 line plain English description of the dish)
+- Coach Note (personalized advice/guidance specific to user's profile and goals)
 - Key vitamins/minerals when significant
 - Health tags (high-protein, low-carb, gluten-free, etc.)
 
@@ -251,6 +260,7 @@ ${userContext}
 
 Consider user's diet type, health conditions, and targets when categorizing.
 Use everyday Indian context and portions. Be practical and encouraging.
+Provide specific reasons why each dish suits or doesn't suit the user's profile.
 
 CRITICAL: Return ONLY valid JSON in this exact format:
 {
@@ -265,13 +275,16 @@ CRITICAL: Return ONLY valid JSON in this exact format:
         "fat_g": 12,
         "fiber_g": 6
       },
+      "description": "Traditional dal preparation with tempered spices",
+      "coach_note": "Excellent protein source for your goals, but ask for less oil",
       "vitamins": ["Vitamin A", "Vitamin C"],
       "minerals": ["Iron", "Calcium"],
       "tags": ["high-protein", "vegetarian"],
       "bucket": "Top Picks"
     }
   ],
-  "reasoning": "Overall analysis of menu and recommendations based on user profile"
+  "reasoning": "Overall analysis of menu and recommendations based on user profile",
+  "overall_note": "General Coach C guidance about the menu choices for this user"
 }`;
 
     // Fetch image and convert to base64 for inline_data
@@ -455,6 +468,9 @@ CRITICAL: Return ONLY valid JSON in this exact format:
         protein_g: item.macros.protein_g,
         carbs_g: item.macros.carbs_g,
         fat_g: item.macros.fat_g,
+        fiber_g: item.macros.fiber_g || 0,
+        description: item.description || '',
+        coach_note: item.coach_note || '',
         tags: item.tags,
         reasoning: `${item.vitamins?.join(', ')} | ${item.minerals?.join(', ')}`
       };
@@ -467,6 +483,11 @@ CRITICAL: Return ONLY valid JSON in this exact format:
         analysis.to_avoid.push(dishItem);
       }
     });
+
+    // Add overall note if present
+    if (parsedData.overall_note) {
+      analysis.overall_note = parsedData.overall_note;
+    }
 
     const latencyMs = Date.now() - startTime;
 

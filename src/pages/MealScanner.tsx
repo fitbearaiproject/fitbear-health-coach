@@ -5,11 +5,14 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { ImageProcessor, ScannerDiagnostics, MealScanRequest } from '@/lib/imageProcessor';
-import { Camera, Loader2, Upload, X, Plus, ImageIcon, Clock } from 'lucide-react';
+import { Camera, Loader2, Upload, X, Plus, ImageIcon, Clock, Info } from 'lucide-react';
 
 interface DishItem {
   name: string;
@@ -18,14 +21,22 @@ interface DishItem {
   protein_g: number;
   carbs_g: number;
   fat_g: number;
+  fiber_g: number;
+  description: string;
+  coach_note: string;
   flags: string[];
 }
 
 interface MealAnalysis {
   dishes: DishItem[];
-  total_kcal: number;
-  meal_notes: string;
-  portion_confidence: string;
+  summary: {
+    total_kcal: number;
+    protein_g: number;
+    carbs_g: number;
+    fat_g: number;
+    fiber_g: number;
+  };
+  overall_note?: string;
   parsing_error?: boolean;
 }
 
@@ -45,6 +56,12 @@ interface RecentMeal {
   image_url?: string;
 }
 
+interface SelectedDish {
+  dish: DishItem;
+  portion: string;
+  quantity: number;
+}
+
 export default function MealScanner() {
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
@@ -57,6 +74,7 @@ export default function MealScanner() {
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string>('');
   const [diagnostics, setDiagnostics] = useState<ScannerDiagnostics | null>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [selectedDishes, setSelectedDishes] = useState<{ [key: string]: SelectedDish }>({});
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { user } = useAuth();
@@ -114,6 +132,7 @@ export default function MealScanner() {
     setError('');
     setAnalysis(null);
     setUploadedImageUrl('');
+    setSelectedDishes({});
 
     // Create preview
     const reader = new FileReader();
@@ -128,43 +147,6 @@ export default function MealScanner() {
     if (file) {
       handleImageSelect(file);
     }
-  };
-
-  const uploadImageToStorage = async (file: File): Promise<string> => {
-    const fileName = `meal_${user?.id}_${Date.now()}.jpg`;
-    const filePath = `meals/${fileName}`;
-
-    const { data, error } = await supabase.storage
-      .from('meal-photos')
-      .upload(filePath, file, {
-        contentType: file.type,
-        upsert: false
-      });
-
-    if (error) {
-      throw new Error(`Failed to upload image: ${error.message}`);
-    }
-
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from('meal-photos')
-      .getPublicUrl(filePath);
-
-    return urlData.publicUrl;
-  };
-
-  const convertToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => {
-        const base64 = reader.result as string;
-        // Remove data:image/jpeg;base64, prefix
-        const base64Data = base64.split(',')[1];
-        resolve(base64Data);
-      };
-      reader.onerror = error => reject(error);
-    });
   };
 
   const analyzeMeal = async () => {
@@ -253,54 +235,79 @@ export default function MealScanner() {
     }
   };
 
-  const logMealToDB = async () => {
-    if (!analysis || !user) return;
+  const handleDishSelection = (dish: DishItem, checked: boolean) => {
+    const dishKey = dish.name;
+    
+    if (checked) {
+      setSelectedDishes(prev => ({
+        ...prev,
+        [dishKey]: {
+          dish,
+          portion: dish.portion,
+          quantity: 1
+        }
+      }));
+    } else {
+      setSelectedDishes(prev => {
+        const newSelected = { ...prev };
+        delete newSelected[dishKey];
+        return newSelected;
+      });
+    }
+  };
+
+  const updateDishPortion = (dishKey: string, portion: string) => {
+    setSelectedDishes(prev => ({
+      ...prev,
+      [dishKey]: {
+        ...prev[dishKey],
+        portion
+      }
+    }));
+  };
+
+  const updateDishQuantity = (dishKey: string, quantity: number) => {
+    setSelectedDishes(prev => ({
+      ...prev,
+      [dishKey]: {
+        ...prev[dishKey],
+        quantity: Math.max(0.1, quantity)
+      }
+    }));
+  };
+
+  const logSelectedDishes = async () => {
+    if (!user || Object.keys(selectedDishes).length === 0) return;
 
     setIsLogging(true);
 
     try {
-      // Check for potential duplicates in the last hour
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-      const { data: recentLogs } = await supabase
-        .from('meal_logs')
-        .select('dish_name, kcal')
-        .eq('user_id', user.id)
-        .gte('meal_time', oneHourAgo);
-
-      // Simple deduplication: check if similar meal logged recently
-      const currentTotalKcal = analysis.analysis.total_kcal;
-      const isDuplicate = recentLogs?.some(log => 
-        Math.abs(log.kcal - currentTotalKcal) < 50 && 
-        analysis.analysis.dishes.some(dish => 
-          log.dish_name.toLowerCase().includes(dish.name.toLowerCase().split(' ')[0])
-        )
-      );
-
-      if (isDuplicate) {
-        const shouldContinue = confirm('A similar meal was logged recently. Continue anyway?');
-        if (!shouldContinue) {
-          setIsLogging(false);
-          return;
-        }
-      }
-
-      // Log each dish as a separate entry
       const mealTime = new Date().toISOString();
       const mealDay = new Date().toISOString().split('T')[0];
 
-      for (const dish of analysis.analysis.dishes) {
+      for (const [dishKey, selectedDish] of Object.entries(selectedDishes)) {
+        const { dish, quantity } = selectedDish;
+        
+        // Calculate macros based on quantity
+        const scaledKcal = Math.round(dish.kcal * quantity);
+        const scaledProtein = Math.round(dish.protein_g * quantity * 10) / 10;
+        const scaledCarbs = Math.round(dish.carbs_g * quantity * 10) / 10;
+        const scaledFat = Math.round(dish.fat_g * quantity * 10) / 10;
+        const scaledFiber = Math.round(dish.fiber_g * quantity * 10) / 10;
+
         const { error } = await supabase
           .from('meal_logs')
           .insert({
             user_id: user.id,
             dish_name: dish.name,
-            quantity: 1,
-            unit: dish.portion,
-            kcal: dish.kcal,
-            protein_g: dish.protein_g,
-            carbs_g: dish.carbs_g,
-            fat_g: dish.fat_g,
-            notes: `${dish.flags.join(', ')} - ${analysis.analysis.meal_notes}`,
+            quantity,
+            unit: selectedDish.portion,
+            kcal: scaledKcal,
+            protein_g: scaledProtein,
+            carbs_g: scaledCarbs,
+            fat_g: scaledFat,
+            fiber_g: scaledFiber,
+            notes: `${dish.flags.join(', ')} - ${dish.coach_note}`,
             source: 'photo',
             meal_time: mealTime,
             meal_day_ist: mealDay,
@@ -312,15 +319,12 @@ export default function MealScanner() {
 
       toast({
         title: "Meal logged successfully!",
-        description: `Logged ${analysis.analysis.dishes.length} items to your nutrition diary.`,
+        description: `Logged ${Object.keys(selectedDishes).length} items to your nutrition diary.`,
       });
 
       // Refresh recent meals and clear current analysis
       await loadRecentMeals();
-      setAnalysis(null);
-      setSelectedImage(null);
-      setImagePreview('');
-      setUploadedImageUrl('');
+      setSelectedDishes({});
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to log meal';
@@ -391,6 +395,7 @@ export default function MealScanner() {
                           setImagePreview('');
                           setAnalysis(null);
                           setUploadedImageUrl('');
+                          setSelectedDishes({});
                         }}
                         className="absolute top-2 right-2"
                       >
@@ -435,18 +440,18 @@ export default function MealScanner() {
             </Alert>
           )}
 
-          {/* Analysis Results */}
-          {analysis && (
+          {/* Selected Dishes Summary */}
+          {Object.keys(selectedDishes).length > 0 && (
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
-                  <CardTitle>Detected Items</CardTitle>
+                  <CardTitle>Selected Items ({Object.keys(selectedDishes).length})</CardTitle>
                   <CardDescription>
-                    Confidence: {analysis.analysis.portion_confidence} | Total: {analysis.analysis.total_kcal} kcal
+                    Review your selections before logging
                   </CardDescription>
                 </div>
                 <Button
-                  onClick={logMealToDB}
+                  onClick={logSelectedDishes}
                   disabled={isLogging}
                   className="flex items-center gap-2"
                 >
@@ -455,50 +460,127 @@ export default function MealScanner() {
                   ) : (
                     <Plus className="h-4 w-4" />
                   )}
-                  Log Meal
+                  Log Selected Items
                 </Button>
+              </CardHeader>
+            </Card>
+          )}
+
+          {/* Analysis Results */}
+          {analysis && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Detected Items</CardTitle>
+                <CardDescription>
+                  Total: {analysis.analysis.summary.total_kcal} kcal | 
+                  Protein: {analysis.analysis.summary.protein_g}g | 
+                  Carbs: {analysis.analysis.summary.carbs_g}g | 
+                  Fat: {analysis.analysis.summary.fat_g}g | 
+                  Fiber: {analysis.analysis.summary.fiber_g}g
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {analysis.analysis.meal_notes && (
+                  {analysis.analysis.overall_note && (
                     <Alert>
-                      <AlertDescription>{analysis.analysis.meal_notes}</AlertDescription>
+                      <Info className="h-4 w-4" />
+                      <AlertDescription>{analysis.analysis.overall_note}</AlertDescription>
                     </Alert>
                   )}
                   
                   <div className="space-y-3">
-                    {analysis.analysis.dishes.map((dish, index) => (
-                      <Card key={index} className="p-4">
-                        <div className="flex justify-between items-start mb-2">
-                          <h4 className="font-medium">{dish.name}</h4>
-                          <span className="text-sm font-medium">{dish.kcal} kcal</span>
-                        </div>
-                        <p className="text-sm text-muted-foreground mb-2">Portion: {dish.portion}</p>
-                        <div className="grid grid-cols-3 gap-4 text-xs mb-2">
-                          <div>
-                            <span className="text-muted-foreground">Protein:</span>
-                            <span className="ml-1 font-medium">{dish.protein_g}g</span>
+                    {analysis.analysis.dishes.map((dish, index) => {
+                      const dishKey = dish.name;
+                      const isSelected = dishKey in selectedDishes;
+                      const selectedDish = selectedDishes[dishKey];
+                      
+                      return (
+                        <Card key={index} className="p-4">
+                          <div className="flex items-start gap-3">
+                            <Checkbox 
+                              checked={isSelected}
+                              onCheckedChange={(checked) => handleDishSelection(dish, checked as boolean)}
+                              className="mt-1"
+                            />
+                            <div className="flex-1 space-y-3">
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <h4 className="font-medium">{dish.name}</h4>
+                                  {dish.description && (
+                                    <p className="text-sm text-muted-foreground mt-1">{dish.description}</p>
+                                  )}
+                                </div>
+                                <span className="text-sm font-medium">{dish.kcal} kcal</span>
+                              </div>
+                              
+                              {dish.coach_note && (
+                                <div className="flex items-start gap-2 p-2 bg-blue-50 rounded-md">
+                                  <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                                  <p className="text-sm text-blue-700 italic">{dish.coach_note}</p>
+                                </div>
+                              )}
+
+                              {isSelected && (
+                                <div className="p-3 bg-gray-50 rounded-md space-y-3">
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <Label htmlFor={`portion-${dishKey}`} className="text-xs">Portion</Label>
+                                      <Input
+                                        id={`portion-${dishKey}`}
+                                        value={selectedDish.portion}
+                                        onChange={(e) => updateDishPortion(dishKey, e.target.value)}
+                                        className="h-8 text-sm"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor={`quantity-${dishKey}`} className="text-xs">Quantity</Label>
+                                      <Input
+                                        id={`quantity-${dishKey}`}
+                                        type="number"
+                                        min="0.1"
+                                        step="0.1"
+                                        value={selectedDish.quantity}
+                                        onChange={(e) => updateDishQuantity(dishKey, parseFloat(e.target.value) || 1)}
+                                        className="h-8 text-sm"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              <p className="text-sm text-muted-foreground">Portion: {dish.portion}</p>
+                              <div className="grid grid-cols-4 gap-4 text-xs">
+                                <div>
+                                  <span className="text-muted-foreground">Protein:</span>
+                                  <span className="ml-1 font-medium">{dish.protein_g}g</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Carbs:</span>
+                                  <span className="ml-1 font-medium">{dish.carbs_g}g</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Fat:</span>
+                                  <span className="ml-1 font-medium">{dish.fat_g}g</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Fiber:</span>
+                                  <span className="ml-1 font-medium">{dish.fiber_g}g</span>
+                                </div>
+                              </div>
+                              {dish.flags.length > 0 && (
+                                <div className="flex flex-wrap gap-1">
+                                  {dish.flags.map((flag, flagIndex) => (
+                                    <Badge key={flagIndex} variant="secondary" className="text-xs">
+                                      {flag}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <div>
-                            <span className="text-muted-foreground">Carbs:</span>
-                            <span className="ml-1 font-medium">{dish.carbs_g}g</span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Fat:</span>
-                            <span className="ml-1 font-medium">{dish.fat_g}g</span>
-                          </div>
-                        </div>
-                        {dish.flags.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {dish.flags.map((flag, flagIndex) => (
-                              <Badge key={flagIndex} variant="secondary" className="text-xs">
-                                {flag}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-                      </Card>
-                    ))}
+                        </Card>
+                      );
+                    })}
                   </div>
                 </div>
               </CardContent>
@@ -506,72 +588,76 @@ export default function MealScanner() {
           )}
         </div>
 
-        {/* Right Column - Recent Meals */}
-        <div>
+        {/* Right Column - Recent Meals & Diagnostics */}
+        <div className="space-y-6">
+          {/* Recent Meals */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Clock className="h-4 w-4" />
                 Recent Meals
               </CardTitle>
-              <CardDescription>Your last 5 logged meals</CardDescription>
             </CardHeader>
             <CardContent>
-              <ScrollArea className="h-96">
+              <div className="space-y-3">
                 {recentMeals.length > 0 ? (
-                  <div className="space-y-3">
-                    {recentMeals.map((meal) => (
-                      <Card key={meal.id} className="p-3">
-                        <div className="flex items-start gap-3">
-                          {meal.image_url && (
-                            <img
-                              src={meal.image_url}
-                              alt={meal.dish_name}
-                              className="w-12 h-12 object-cover rounded"
-                            />
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-medium text-sm truncate">{meal.dish_name}</h4>
-                            <p className="text-xs text-muted-foreground">{meal.kcal} kcal</p>
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(meal.meal_time).toLocaleDateString('en-IN')} • {' '}
-                              {new Date(meal.meal_time).toLocaleTimeString('en-IN', {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                            </p>
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
+                  recentMeals.map((meal) => (
+                    <div key={meal.id} className="flex justify-between items-center p-2 border rounded-md">
+                      <div>
+                        <p className="font-medium text-sm">{meal.dish_name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(meal.meal_time).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <Badge variant="secondary">{meal.kcal} kcal</Badge>
+                    </div>
+                  ))
                 ) : (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Camera className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">No meals logged yet</p>
-                    <p className="text-xs">Start by scanning your first meal!</p>
-                  </div>
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No recent meals logged
+                  </p>
                 )}
-              </ScrollArea>
+              </div>
             </CardContent>
           </Card>
-        </div>
 
-        {/* Diagnostics */}
-        {diagnostics && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="text-sm">Scan Diagnostics</CardTitle>
-            </CardHeader>
-            <CardContent className="text-xs text-muted-foreground space-y-1">
-              <p>Request ID: {diagnostics.request_id}</p>
-              <p>Status: {diagnostics.status} | Latency: {diagnostics.latency_ms}ms</p>
-              <p>Model: {diagnostics.model} | Image: {diagnostics.image_px}</p>
-              <p>JSON Parse: {diagnostics.json_parse_ok ? '✅' : '❌'}</p>
-              {diagnostics.error_class && <p>Error Class: {diagnostics.error_class}</p>}
-            </CardContent>
-          </Card>
-        )}
+          {/* Diagnostics */}
+          {diagnostics && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Scan Diagnostics</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Request ID</p>
+                    <p className="font-mono text-xs">{diagnostics.request_id}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-muted-foreground">Latency</p>
+                      <p className="font-medium">{diagnostics.latency_ms}ms</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Model</p>
+                      <p className="font-medium">{diagnostics.model}</p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">JSON Parse</p>
+                    <p className="font-medium">
+                      {diagnostics.json_parse_ok ? (
+                        <span className="text-green-600">✓ Success</span>
+                      ) : (
+                        <span className="text-red-600">✗ Failed</span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
       </div>
     </div>
   );
