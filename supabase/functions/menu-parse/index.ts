@@ -335,23 +335,50 @@ CRITICAL: Return ONLY valid JSON in this exact format:
     if (!geminiResponse.ok) {
       const errorText = await geminiResponse.text();
       const status = geminiResponse.status;
-      
-      if (status === 429) {
-        throw new Error('Rate limit exceeded. Please try again in a moment.');
-      } else if (status >= 500) {
-        throw new Error('Google AI service temporarily unavailable. Please try again.');
-      } else {
-        throw new Error(`Gemini API error: ${status} - ${errorText}`);
-      }
+      console.error('Gemini non-OK (menu-parse):', status, errorText?.slice(0, 600), requestId);
+      const latencyMs = Date.now() - startTime;
+      const errorClass = status === 401 || status === 403 ? 'Auth' : status === 429 ? 'RateLimit' : status >= 500 ? 'Network' : 'Logic';
+      return new Response(
+        JSON.stringify({
+          error: `Gemini API error: ${status}`,
+          request_id: requestId,
+          latency_ms: latencyMs,
+          error_class: errorClass,
+          model_response: errorText?.slice(0, 500) || ''
+        }),
+        { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const geminiData = await geminiResponse.json();
     
-    if (!geminiData.candidates || !geminiData.candidates[0]) {
-      throw new Error('No response from Gemini AI');
+    const candidate = geminiData?.candidates?.[0];
+    const finishReason = candidate?.finishReason || candidate?.finish_reason;
+    if (finishReason && String(finishReason).toUpperCase().includes('SAFETY')) {
+      const latencyMs = Date.now() - startTime;
+      return new Response(
+        JSON.stringify({
+          error: 'AI response was blocked by safety filters. Try a tighter crop or clearer image.',
+          request_id: requestId,
+          latency_ms: latencyMs,
+          error_class: 'DataContract'
+        }),
+        { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    const rawResponse = geminiData.candidates[0].content.parts[0].text;
+    let rawResponse = '';
+    const parts = candidate?.content?.parts;
+    if (Array.isArray(parts) && parts.length) {
+      const textPart = parts.find((p: any) => typeof p.text === 'string');
+      rawResponse = textPart?.text ?? (parts[0]?.text ?? '');
+    } else if (typeof candidate?.content?.text === 'string') {
+      rawResponse = candidate.content.text;
+    }
+
+    if (!rawResponse) {
+      throw new Error('No response from Gemini AI');
+    }
     
     // Parse JSON response with robust error handling
     let parsedData: MenuParseResponse;

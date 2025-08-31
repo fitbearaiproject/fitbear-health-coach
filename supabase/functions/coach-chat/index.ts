@@ -28,13 +28,34 @@ serve(async (req) => {
     const googleApiKey = Deno.env.get('GOOGLE_API_KEY');
     
     if (!supabaseUrl) {
-      throw new Error('Missing SUPABASE_URL environment variable');
+      return new Response(
+        JSON.stringify({ 
+          error: 'Missing SUPABASE_URL environment variable',
+          message_id: requestId,
+          error_class: 'Config'
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
     if (!supabaseServiceRole) {
-      throw new Error('Missing SUPABASE_SERVICE_ROLE (or SUPABASE_SERVICE_ROLE_KEY) environment variable');
+      return new Response(
+        JSON.stringify({ 
+          error: 'Missing SUPABASE_SERVICE_ROLE (or SUPABASE_SERVICE_ROLE_KEY) environment variable',
+          message_id: requestId,
+          error_class: 'Config'
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
     if (!googleApiKey) {
-      throw new Error('Missing GOOGLE_API_KEY environment variable');
+      return new Response(
+        JSON.stringify({ 
+          error: 'Missing GOOGLE_API_KEY environment variable',
+          message_id: requestId,
+          error_class: 'Config'
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Initialize Supabase client
@@ -176,7 +197,20 @@ Provide personalized advice based on the user's profile above. Be specific about
 
         if (!geminiResponse.ok && geminiResponse.status !== 429) {
           const errText = await geminiResponse.text();
-          throw new Error(`Gemini error ${geminiResponse.status}: ${errText}`);
+          console.error('Gemini non-OK for coach-chat:', geminiResponse.status, errText?.slice(0, 600), requestId);
+          const status = geminiResponse.status;
+          const errorClass = status === 401 || status === 403 ? 'Auth' : status === 429 ? 'RateLimit' : status >= 500 ? 'Network' : 'Logic';
+          const latencyMs = Date.now() - startTime;
+          return new Response(
+            JSON.stringify({
+              error: `Gemini API error: ${status}`,
+              message_id: requestId,
+              latency_ms: latencyMs,
+              error_class: errorClass,
+              model_response: errText?.slice(0, 500) || ''
+            }),
+            { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
         }
 
         if (geminiResponse.status === 429 && retryCount < maxRetries) {
