@@ -6,13 +6,14 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useHydration } from '@/hooks/useHydration';
 import { Calendar } from '@/components/ui/calendar';
+import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { CalendarIcon, TrendingUp, Target, ImageIcon, Droplets, Plus, Minus } from 'lucide-react';
+import { CalendarIcon, TrendingUp, Target, ImageIcon, Droplets, Plus, Minus, Pencil, Trash, Check, X } from 'lucide-react';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, subDays, subWeeks } from 'date-fns';
 
 interface MealLog {
@@ -24,6 +25,7 @@ interface MealLog {
   protein_g: number;
   carbs_g: number;
   fat_g: number;
+  fiber_g?: number;
   meal_time: string;
   source: string;
   notes?: string;
@@ -56,7 +58,66 @@ export default function Logs() {
 
   const { user } = useAuth();
   const { toast } = useToast();
-  const { hydrationLogs, todayTotal: waterToday, addWater, removeWater, loadHydrationLogs } = useHydration();
+const { hydrationLogs, todayTotal: waterToday, addWater, removeWater, loadHydrationLogs } = useHydration();
+
+  // Inline edit state for meal logs
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingValues, setEditingValues] = useState<Partial<MealLog>>({});
+
+  const startEdit = (log: MealLog) => {
+    setEditingId(log.id);
+    setEditingValues({
+      quantity: log.quantity,
+      unit: log.unit,
+      kcal: log.kcal,
+      protein_g: log.protein_g,
+      carbs_g: log.carbs_g,
+      fat_g: log.fat_g,
+      fiber_g: log.fiber_g || 0,
+      notes: log.notes || ''
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditingValues({});
+  };
+
+  const saveEdit = async () => {
+    if (!editingId || !user) return;
+    try {
+      const { error } = await supabase
+        .from('meal_logs')
+        .update(editingValues)
+        .eq('id', editingId)
+        .eq('user_id', user.id);
+      if (error) throw error;
+      toast({ title: 'Log updated' });
+      setEditingId(null);
+      setEditingValues({});
+      await loadLogs();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to update log';
+      toast({ title: 'Update failed', description: msg, variant: 'destructive' });
+    }
+  };
+
+  const deleteLog = async (id: string) => {
+    if (!user) return;
+    try {
+      const { error } = await supabase
+        .from('meal_logs')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id);
+      if (error) throw error;
+      toast({ title: 'Log deleted' });
+      await loadLogs();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete log';
+      toast({ title: 'Delete failed', description: msg, variant: 'destructive' });
+    }
+  };
 
   // Calculate date range based on selected filter
   const getDateRange = () => {
@@ -409,33 +470,110 @@ export default function Logs() {
                                           {format(new Date(log.meal_time), 'h:mm a')}
                                         </p>
                                       </div>
-                                      <div className="text-right">
+                                      <div className="flex items-center gap-2">
                                         <p className="text-sm font-medium">{log.kcal} kcal</p>
                                         <Badge variant="secondary" className="text-xs">
                                           {log.source}
                                         </Badge>
                                       </div>
                                     </div>
-                                    
-                                    <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
-                                      <div>
-                                        <span className="text-muted-foreground">P:</span>
-                                        <span className="ml-1">{Math.round(log.protein_g || 0)}g</span>
+
+                                    {editingId === log.id ? (
+                                      <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                                        <Input
+                                          value={editingValues.quantity as number || 0}
+                                          onChange={(e) => setEditingValues(v => ({ ...v, quantity: parseFloat(e.target.value) || 0 }))}
+                                          type="number"
+                                          step="0.1"
+                                          placeholder="Qty"
+                                          className="h-8"
+                                        />
+                                        <Input
+                                          value={editingValues.unit as string || ''}
+                                          onChange={(e) => setEditingValues(v => ({ ...v, unit: e.target.value }))}
+                                          placeholder="Unit"
+                                          className="h-8"
+                                        />
+                                        <Input
+                                          value={editingValues.kcal as number || 0}
+                                          onChange={(e) => setEditingValues(v => ({ ...v, kcal: parseInt(e.target.value) || 0 }))}
+                                          type="number"
+                                          placeholder="kcal"
+                                          className="h-8"
+                                        />
+                                        <Input
+                                          value={editingValues.protein_g as number || 0}
+                                          onChange={(e) => setEditingValues(v => ({ ...v, protein_g: parseFloat(e.target.value) || 0 }))}
+                                          type="number"
+                                          placeholder="Protein (g)"
+                                          className="h-8"
+                                        />
+                                        <Input
+                                          value={editingValues.carbs_g as number || 0}
+                                          onChange={(e) => setEditingValues(v => ({ ...v, carbs_g: parseFloat(e.target.value) || 0 }))}
+                                          type="number"
+                                          placeholder="Carbs (g)"
+                                          className="h-8"
+                                        />
+                                        <Input
+                                          value={editingValues.fat_g as number || 0}
+                                          onChange={(e) => setEditingValues(v => ({ ...v, fat_g: parseFloat(e.target.value) || 0 }))}
+                                          type="number"
+                                          placeholder="Fat (g)"
+                                          className="h-8"
+                                        />
+                                        <Input
+                                          value={(editingValues.fiber_g as number) || 0}
+                                          onChange={(e) => setEditingValues(v => ({ ...v, fiber_g: parseFloat(e.target.value) || 0 }))}
+                                          type="number"
+                                          placeholder="Fiber (g)"
+                                          className="h-8"
+                                        />
+                                        <div className="flex items-center gap-2">
+                                          <Button size="sm" onClick={saveEdit} className="h-8 px-3">
+                                            <Check className="h-4 w-4" />
+                                          </Button>
+                                          <Button size="sm" variant="outline" onClick={cancelEdit} className="h-8 px-3">
+                                            <X className="h-4 w-4" />
+                                          </Button>
+                                        </div>
                                       </div>
-                                      <div>
-                                        <span className="text-muted-foreground">C:</span>
-                                        <span className="ml-1">{Math.round(log.carbs_g || 0)}g</span>
-                                      </div>
-                                      <div>
-                                        <span className="text-muted-foreground">F:</span>
-                                        <span className="ml-1">{Math.round(log.fat_g || 0)}g</span>
-                                      </div>
-                                    </div>
-                                    
-                                    {log.notes && (
-                                      <p className="text-xs text-muted-foreground mt-1 truncate">
-                                        {log.notes}
-                                      </p>
+                                    ) : (
+                                      <>
+                                        <div className="grid grid-cols-4 gap-2 mt-2 text-xs">
+                                          <div>
+                                            <span className="text-muted-foreground">P:</span>
+                                            <span className="ml-1">{Math.round(log.protein_g || 0)}g</span>
+                                          </div>
+                                          <div>
+                                            <span className="text-muted-foreground">C:</span>
+                                            <span className="ml-1">{Math.round(log.carbs_g || 0)}g</span>
+                                          </div>
+                                          <div>
+                                            <span className="text-muted-foreground">F:</span>
+                                            <span className="ml-1">{Math.round(log.fat_g || 0)}g</span>
+                                          </div>
+                                          <div>
+                                            <span className="text-muted-foreground">Fi:</span>
+                                            <span className="ml-1">{Math.round(log.fiber_g || 0)}g</span>
+                                          </div>
+                                        </div>
+
+                                        {log.notes && (
+                                          <p className="text-xs text-muted-foreground mt-1 truncate">
+                                            {log.notes}
+                                          </p>
+                                        )}
+
+                                        <div className="mt-2 flex gap-2">
+                                          <Button size="sm" variant="outline" onClick={() => startEdit(log)} className="h-8 px-3">
+                                            <Pencil className="h-4 w-4" />
+                                          </Button>
+                                          <Button size="sm" variant="destructive" onClick={() => deleteLog(log.id)} className="h-8 px-3">
+                                            <Trash className="h-4 w-4" />
+                                          </Button>
+                                        </div>
+                                      </>
                                     )}
                                   </div>
                                 </div>

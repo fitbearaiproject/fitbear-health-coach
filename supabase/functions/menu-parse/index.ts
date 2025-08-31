@@ -290,6 +290,7 @@ CRITICAL: Return ONLY valid JSON in this exact format:
     // Fetch image and convert to base64 for inline_data
     let imageBase64 = '';
     let imagePx = 'unknown';
+    let imageMimeType = 'image/jpeg';
     try {
       console.log('Fetching image from:', image_url);
       const imageResponse = await fetch(image_url);
@@ -301,12 +302,17 @@ CRITICAL: Return ONLY valid JSON in this exact format:
       if (contentLength) {
         imagePx = `${Math.round(parseInt(contentLength) / 1024)}KB`;
       }
+
+      const contentTypeHeader = imageResponse.headers.get('content-type');
+      if (contentTypeHeader) {
+        imageMimeType = contentTypeHeader.split(';')[0].trim();
+      }
       
       const imageBytes = await imageResponse.arrayBuffer();
       const imageUint8Array = new Uint8Array(imageBytes);
       imageBase64 = base64Encode(imageUint8Array);
       
-      console.log(`Image processed: ${imagePx}, base64 length: ${imageBase64.length}`);
+      console.log(`Image processed: ${imagePx}, base64 length: ${imageBase64.length}, mime: ${imageMimeType}`);
     } catch (error) {
       console.error('Image fetch error:', error);
       throw new Error(`Failed to process image: ${error.message}`);
@@ -319,7 +325,7 @@ CRITICAL: Return ONLY valid JSON in this exact format:
         headers: {
           'Content-Type': 'application/json',
         },
-        signal: AbortSignal.timeout(20000), // 20s timeout
+        signal: AbortSignal.timeout(40000), // 40s timeout to reduce flaky timeouts
         body: JSON.stringify({
           contents: [{
             parts: [
@@ -328,7 +334,7 @@ CRITICAL: Return ONLY valid JSON in this exact format:
               { text: userContext },
               { 
                 inline_data: {
-                  mime_type: "image/jpeg",
+                  mime_type: imageMimeType,
                   data: imageBase64
                 }
               }
@@ -343,7 +349,7 @@ CRITICAL: Return ONLY valid JSON in this exact format:
           }
         }),
       });
-    });
+    }, 2);
 
     if (!geminiResponse.ok) {
       const errorText = await geminiResponse.text();
