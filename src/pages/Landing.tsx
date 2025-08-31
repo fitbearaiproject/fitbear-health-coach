@@ -14,8 +14,8 @@ export default function Landing({
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-md border border-dashed border-muted-foreground/40 flex items-center justify-center">
-              <img src={fitbearLogo} alt="FITBEAR AI logo placeholder" className="w-7 h-7 object-contain" />
+            <div className="w-10 h-10 rounded-full border-2 border-dashed border-muted-foreground/40 flex items-center justify-center bg-muted/20">
+              <span className="text-xs font-medium text-muted-foreground">LOGO</span>
             </div>
             <h1 className="text-xl font-bold tracking-tight">FITBEAR AI</h1>
           </div>
@@ -28,17 +28,16 @@ export default function Landing({
       </header>
 
       {/* Hero Section */}
-      <section className="py-16 px-4">
+      <section className="py-20 px-4">
         <div className="container mx-auto max-w-4xl">
-          <div className="text-center space-y-6">
-            <h2 className="text-3xl md:text-5xl font-bold leading-tight">Your AI Health & Nutrition Coach
-powered by The Fit Bear philosophy</h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">Chat or speak with Coach C to get personal guidance on meals, workouts, and everyday choices—built for Indian food and routines but catering to a global audience. Get validated expert advice on your device.</p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
-              <Button size="lg" className="bg-gradient-primary px-8" onClick={onGetStarted}>
-                Get Started
+          <div className="text-center space-y-8">
+            <h2 className="text-4xl md:text-6xl font-bold leading-tight">Your AI Health & Nutrition Coach</h2>
+            <p className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">Chat or speak with Coach C to get personal guidance on meals, workouts, and everyday choices—built for Indian food and routines but catering to a global audience.</p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
+              <Button size="lg" className="bg-gradient-primary px-10 py-4" onClick={onGetStarted}>
+                Get Started Free
               </Button>
-              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-6 text-sm text-muted-foreground">
                 <div className="flex items-center gap-2"><Mic className="w-4 h-4" />Voice</div>
                 <div className="flex items-center gap-2"><MessageCircle className="w-4 h-4" />Chat</div>
                 <div className="flex items-center gap-2"><Camera className="w-4 h-4" />Photo</div>

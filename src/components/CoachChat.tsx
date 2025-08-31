@@ -584,9 +584,9 @@ export function CoachChat({ userId }: CoachChatProps) {
       </div>
 
       <div className="flex items-center gap-3 mb-6">
-        <Avatar className="w-[72px] h-[72px]">
+        <Avatar className="w-20 h-20">
           <AvatarImage src="/images/coach-photo.png" alt="Coach C avatar" />
-          <AvatarFallback className="bg-gradient-primary text-primary-foreground font-bold">
+          <AvatarFallback className="bg-gradient-primary text-primary-foreground font-bold text-lg">
             C
           </AvatarFallback>
         </Avatar>
