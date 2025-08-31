@@ -37,6 +37,7 @@ interface NutritionTotals {
   protein_g: number;
   carbs_g: number;
   fat_g: number;
+  fiber_g: number;
   meals_count: number;
 }
 
@@ -51,7 +52,7 @@ export default function Logs() {
   const [selectedFilter, setSelectedFilter] = useState<'today' | 'week' | 'custom'>('today');
   const [customDateRange, setCustomDateRange] = useState<{ from?: Date; to?: Date }>({});
   const [logs, setLogs] = useState<MealLog[]>([]);
-  const [totals, setTotals] = useState<NutritionTotals>({ kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, meals_count: 0 });
+  const [totals, setTotals] = useState<NutritionTotals>({ kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0, meals_count: 0 });
   const [targets, setTargets] = useState<UserTargets>({});
   const [isLoading, setIsLoading] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
@@ -219,8 +220,9 @@ const { hydrationLogs, todayTotal: waterToday, addWater, removeWater, loadHydrat
         protein_g: acc.protein_g + (log.protein_g || 0),
         carbs_g: acc.carbs_g + (log.carbs_g || 0),
         fat_g: acc.fat_g + (log.fat_g || 0),
+        fiber_g: acc.fiber_g + (log.fiber_g || 0),
         meals_count: acc.meals_count + 1
-      }), { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, meals_count: 0 });
+      }), { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0, meals_count: 0 });
 
       setTotals(newTotals);
 
@@ -394,6 +396,10 @@ const { hydrationLogs, todayTotal: waterToday, addWater, removeWater, loadHydrat
                 <div className="text-center p-3 bg-muted rounded-lg">
                   <p className="text-2xl font-bold text-orange-600">{Math.round(totals.fat_g)}</p>
                   <p className="text-xs text-muted-foreground">Fat (g)</p>
+                </div>
+                <div className="text-center p-3 bg-muted rounded-lg">
+                  <p className="text-2xl font-bold text-purple-600">{Math.round(totals.fiber_g)}</p>
+                  <p className="text-xs text-muted-foreground">Fiber (g)</p>
                 </div>
               </div>
             </CardContent>
