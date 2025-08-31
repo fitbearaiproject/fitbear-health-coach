@@ -310,9 +310,9 @@ export default function MealScanner() {
             notes: `${dish.flags.join(', ')} - ${dish.coach_note}`,
             source: 'photo',
             meal_time: mealTime,
-            meal_day_ist: mealDay,
             image_url: uploadedImageUrl
           });
+
 
         if (error) throw error;
       }

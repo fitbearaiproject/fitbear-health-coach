@@ -298,9 +298,9 @@ export default function MenuScanner() {
             fiber_g: scaledFiber,
             notes: `${category} - ${dish.coach_note}`,
             source: 'menu',
-            meal_time: mealTime,
-            meal_day_ist: mealDay
+            meal_time: mealTime
           });
+
 
         if (error) throw error;
       }

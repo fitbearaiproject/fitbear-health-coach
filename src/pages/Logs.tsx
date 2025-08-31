@@ -83,6 +83,31 @@ const { hydrationLogs, todayTotal: waterToday, addWater, removeWater, loadHydrat
     setEditingValues({});
   };
 
+  const handleQuantityChange = (newQty: number) => {
+    if (!editingId) {
+      setEditingValues(v => ({ ...v, quantity: newQty }));
+      return;
+    }
+    const baseLog = logs.find(l => l.id === editingId);
+    setEditingValues(v => {
+      if (!baseLog || !baseLog.quantity || newQty <= 0) return { ...v, quantity: newQty };
+      const perKcal = (baseLog.kcal || 0) / baseLog.quantity;
+      const perProtein = (baseLog.protein_g || 0) / baseLog.quantity;
+      const perCarbs = (baseLog.carbs_g || 0) / baseLog.quantity;
+      const perFat = (baseLog.fat_g || 0) / baseLog.quantity;
+      const perFiber = (baseLog.fiber_g || 0) / baseLog.quantity;
+      return {
+        ...v,
+        quantity: newQty,
+        kcal: Math.round(perKcal * newQty),
+        protein_g: Math.round(perProtein * newQty * 10) / 10,
+        carbs_g: Math.round(perCarbs * newQty * 10) / 10,
+        fat_g: Math.round(perFat * newQty * 10) / 10,
+        fiber_g: Math.round(perFiber * newQty * 10) / 10,
+      };
+    });
+  };
+
   const saveEdit = async () => {
     if (!editingId || !user) return;
     try {
@@ -482,7 +507,7 @@ const { hydrationLogs, todayTotal: waterToday, addWater, removeWater, loadHydrat
                                       <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
                                         <Input
                                           value={editingValues.quantity as number || 0}
-                                          onChange={(e) => setEditingValues(v => ({ ...v, quantity: parseFloat(e.target.value) || 0 }))}
+                                          onChange={(e) => handleQuantityChange(parseFloat(e.target.value) || 0)}
                                           type="number"
                                           step="0.1"
                                           placeholder="Qty"
