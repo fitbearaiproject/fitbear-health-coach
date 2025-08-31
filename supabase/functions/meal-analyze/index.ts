@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import { encode as base64Encode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 
 // Zod-like validation (lightweight version for Deno)
 interface BPSProfile {
@@ -294,8 +295,8 @@ CRITICAL: Return ONLY valid JSON in this exact format:
       }
       
       const imageBytes = await imageResponse.arrayBuffer();
-      const base64String = btoa(String.fromCharCode(...new Uint8Array(imageBytes)));
-      imageBase64 = base64String;
+      const imageUint8Array = new Uint8Array(imageBytes);
+      imageBase64 = base64Encode(imageUint8Array);
       
       console.log(`Image processed: ${imagePx}, base64 length: ${imageBase64.length}`);
     } catch (error) {
