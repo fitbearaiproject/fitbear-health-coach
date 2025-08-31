@@ -31,7 +31,7 @@ export default function Landing({
       <section className="py-20 px-4">
         <div className="container mx-auto max-w-4xl">
           <div className="text-center space-y-8">
-            <h2 className="text-4xl md:text-6xl font-bold leading-tight">Your AI Health & Nutrition Coach</h2>
+            <h2 className="text-4xl md:text-6xl font-bold leading-tight">FitBear AI: Health and Nutrition powered by the The Fit Bear philosophy!</h2>
             <p className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">Chat or speak with Coach C to get personal guidance on meals, workouts, and everyday choices—built for Indian food and routines but catering to a global audience.</p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
               <Button size="lg" className="bg-gradient-primary px-10 py-4" onClick={onGetStarted}>
