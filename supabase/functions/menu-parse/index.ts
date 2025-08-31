@@ -47,6 +47,25 @@ interface MenuParseResponse {
   reasoning: string;
 }
 
+// UI format interfaces
+interface DishItem {
+  name: string;
+  portion: string;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  tags: string[];
+  reasoning: string;
+}
+
+interface MenuAnalysis {
+  top_picks: DishItem[];
+  alternates: DishItem[];
+  to_avoid: DishItem[];
+  general_notes: string;
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -114,6 +133,51 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
+    // Validate required environment variables
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceRole = Deno.env.get('SUPABASE_SERVICE_ROLE');
+    const googleApiKey = Deno.env.get('GOOGLE_API_KEY');
+    
+    if (!supabaseUrl) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Missing SUPABASE_URL environment variable',
+          request_id: requestId,
+          error_class: 'Config'
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+    if (!supabaseServiceRole) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Missing SUPABASE_SERVICE_ROLE environment variable',
+          request_id: requestId,
+          error_class: 'Config'
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+    if (!googleApiKey) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Missing GOOGLE_API_KEY environment variable',
+          request_id: requestId,
+          error_class: 'Config'
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
     // Validate Content-Type
     const contentType = req.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
@@ -209,26 +273,39 @@ CRITICAL: Return ONLY valid JSON in this exact format:
   "reasoning": "Overall analysis of menu and recommendations based on user profile"
 }`;
 
-    // Get image dimensions/metadata for diagnostics
+    // Fetch image and convert to base64 for inline_data
+    let imageBase64 = '';
     let imagePx = 'unknown';
     try {
-      const imageResponse = await fetch(image_url, { method: 'HEAD' });
+      console.log('Fetching image from:', image_url);
+      const imageResponse = await fetch(image_url);
+      if (!imageResponse.ok) {
+        throw new Error(`Failed to fetch image: ${imageResponse.status}`);
+      }
+      
       const contentLength = imageResponse.headers.get('content-length');
       if (contentLength) {
         imagePx = `${Math.round(parseInt(contentLength) / 1024)}KB`;
       }
+      
+      const imageBytes = await imageResponse.arrayBuffer();
+      const base64String = btoa(String.fromCharCode(...new Uint8Array(imageBytes)));
+      imageBase64 = base64String;
+      
+      console.log(`Image processed: ${imagePx}, base64 length: ${imageBase64.length}`);
     } catch (error) {
-      console.log('Could not get image metadata:', error.message);
+      console.error('Image fetch error:', error);
+      throw new Error(`Failed to process image: ${error.message}`);
     }
 
     // Call Gemini API with proper format and retry logic
     const geminiResponse = await retryApiCall(async () => {
-      return await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${Deno.env.get('GOOGLE_API_KEY')}`, {
+      return await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${googleApiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        signal: AbortSignal.timeout(8000), // 8s timeout
+        signal: AbortSignal.timeout(20000), // 20s timeout
         body: JSON.stringify({
           contents: [{
             parts: [
@@ -236,9 +313,9 @@ CRITICAL: Return ONLY valid JSON in this exact format:
               { text: 'Return only valid JSON matching the specified contract.' },
               { text: userContext },
               { 
-                file_data: {
+                inline_data: {
                   mime_type: "image/jpeg",
-                  file_uri: image_url
+                  data: imageBase64
                 }
               }
             ]
@@ -333,6 +410,36 @@ CRITICAL: Return ONLY valid JSON in this exact format:
       }
     }
 
+    // Transform to UI format
+    const analysis: MenuAnalysis = {
+      top_picks: [],
+      alternates: [],
+      to_avoid: [],
+      general_notes: parsedData.reasoning || ''
+    };
+
+    // Categorize items by bucket
+    parsedData.items.forEach(item => {
+      const dishItem: DishItem = {
+        name: item.name,
+        portion: item.portion,
+        kcal: item.kcal,
+        protein_g: item.macros.protein_g,
+        carbs_g: item.macros.carbs_g,
+        fat_g: item.macros.fat_g,
+        tags: item.tags,
+        reasoning: `${item.vitamins?.join(', ')} | ${item.minerals?.join(', ')}`
+      };
+
+      if (item.bucket === 'Top Picks') {
+        analysis.top_picks.push(dishItem);
+      } else if (item.bucket === 'Alternates') {
+        analysis.alternates.push(dishItem);
+      } else if (item.bucket === 'To Avoid') {
+        analysis.to_avoid.push(dishItem);
+      }
+    });
+
     const latencyMs = Date.now() - startTime;
 
     return new Response(
@@ -343,7 +450,7 @@ CRITICAL: Return ONLY valid JSON in this exact format:
         model: 'gemini-2.0-flash',
         image_px: imagePx,
         json_parse_ok: jsonParseOk,
-        analysis: parsedData
+        analysis: analysis
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

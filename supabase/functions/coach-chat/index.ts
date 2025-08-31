@@ -22,11 +22,23 @@ serve(async (req) => {
       throw new Error('Message and userId are required');
     }
 
+    // Validate required environment variables
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceRole = Deno.env.get('SUPABASE_SERVICE_ROLE');
+    const googleApiKey = Deno.env.get('GOOGLE_API_KEY');
+    
+    if (!supabaseUrl) {
+      throw new Error('Missing SUPABASE_URL environment variable');
+    }
+    if (!supabaseServiceRole) {
+      throw new Error('Missing SUPABASE_SERVICE_ROLE environment variable');
+    }
+    if (!googleApiKey) {
+      throw new Error('Missing GOOGLE_API_KEY environment variable');
+    }
+
     // Initialize Supabase client
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    const supabase = createClient(supabaseUrl, supabaseServiceRole);
 
     // Get user profile and targets for context
     const { data: profile } = await supabase
@@ -142,10 +154,6 @@ Provide personalized advice based on the user's profile above. Be specific about
 
     while (retryCount <= maxRetries) {
       try {
-        const apiKey = Deno.env.get('GOOGLE_API_KEY');
-        if (!apiKey) {
-          throw new Error('Missing GOOGLE_API_KEY for Gemini');
-        }
         const requestBody = {
           systemInstruction: { role: 'system', parts: [{ text: systemPrompt }] },
           contents: [
@@ -160,7 +168,7 @@ Provide personalized advice based on the user's profile above. Be specific about
           }
         };
 
-        geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+        geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${googleApiKey}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(requestBody),
