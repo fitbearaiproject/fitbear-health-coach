@@ -27,19 +27,12 @@ export default function Landing({ onGetStarted }: LandingProps) {
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full overflow-hidden bg-white flex items-center justify-center">
-              <img src={fitbearLogo} alt="The Fit Bear" className="w-8 h-8 object-contain" />
+            <div className="w-10 h-10 rounded-md border border-dashed border-muted-foreground/40 flex items-center justify-center">
+              <img src={fitbearLogo} alt="FITBEAR AI logo placeholder" className="w-7 h-7 object-contain" />
             </div>
-            <div>
-              <h1 className="text-lg font-bold gradient-text">Fitbear AI</h1>
-              <p className="text-xs text-muted-foreground">Your Health Coach</p>
-            </div>
+            <h1 className="text-xl font-bold tracking-tight">FITBEAR AI</h1>
           </div>
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm">
-              <MessageSquare className="w-4 h-4 mr-2" />
-              WhatsApp us
-            </Button>
+          <div className="flex items-center gap-3">
             <Button onClick={onGetStarted} className="bg-gradient-primary">
               Get Started
             </Button>
@@ -48,88 +41,25 @@ export default function Landing({ onGetStarted }: LandingProps) {
       </header>
 
       {/* Hero Section */}
-      <section className="py-20 px-4">
-        <div className="container mx-auto max-w-6xl">
-          <div className="text-center space-y-8">
-            <div className="space-y-6">
-              <h1 className="text-3xl md:text-5xl font-bold leading-tight">
-                <span className="gradient-text">Coach C</span> guides you on your{" "}
-                <span className="text-primary">fitness and nutrition journey</span>{" "}
-                based on The Fit Bear philosophy - via chat and voice.
-              </h1>
-              <p className="text-xl text-muted-foreground max-w-4xl mx-auto">
-                Coach C builds daily meal + workout plans, analyzes your plate from a photo, 
-                and keeps you on track—Jain/veg-friendly, Indian portions, real-life schedules.
-              </p>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <Button 
-                size="lg" 
-                className="bg-gradient-primary text-lg px-8 py-6"
-                onClick={onGetStarted}
-              >
-                <Heart className="w-5 h-5 mr-2" />
-                Start free health checkup
+      <section className="py-16 px-4">
+        <div className="container mx-auto max-w-4xl">
+          <div className="text-center space-y-6">
+            <h2 className="text-3xl md:text-5xl font-bold leading-tight">
+              Your AI Health & Nutrition Coach
+            </h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              Chat or speak with Coach C to get personal guidance on meals, workouts,
+              and everyday choices—built for Indian food and routines.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+              <Button size="lg" className="bg-gradient-primary px-8" onClick={onGetStarted}>
+                Get Started
               </Button>
-              <div className="flex gap-2">
-                <Button variant="outline" size="lg" className="px-6">
-                  <MessageCircle className="w-5 h-5 mr-2" />
-                  Try Coach C (demo)
-                </Button>
-                <Button variant="outline" size="lg" className="px-6">
-                  <Phone className="w-5 h-5 mr-2" />
-                  WhatsApp us
-                </Button>
+              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2"><Mic className="w-4 h-4"/>Voice</div>
+                <div className="flex items-center gap-2"><MessageCircle className="w-4 h-4"/>Chat</div>
+                <div className="flex items-center gap-2"><Camera className="w-4 h-4"/>Photo</div>
               </div>
-            </div>
-
-            {/* Trust Strip */}
-            <div className="flex flex-wrap justify-center items-center gap-8 text-sm text-muted-foreground pt-8">
-              <div className="flex items-center gap-2">
-                <Star className="w-4 h-4 text-primary" />
-                Built with Cutting-edge AI tools
-              </div>
-              <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-primary" />
-                Works on desktop, tablet and mobile
-              </div>
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-primary" />
-                60-sec sign up
-              </div>
-            </div>
-
-            {/* Hero Visual Placeholder */}
-            <div className="mt-16">
-              <Card className="max-w-4xl mx-auto p-8 bg-gradient-to-br from-primary/5 to-secondary/5">
-                <CardContent className="space-y-4">
-                  <div className="flex justify-center items-center gap-4 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                      <Mic className="w-4 h-4" />
-                      Voice Input
-                    </div>
-                    <span>→</span>
-                    <div className="flex items-center gap-2">
-                      <MessageCircle className="w-4 h-4" />
-                      Coach C Reply
-                    </div>
-                    <span>→</span>
-                    <div className="flex items-center gap-2">
-                      <Camera className="w-4 h-4" />
-                      Meal Photo
-                    </div>
-                    <span>→</span>
-                    <div className="flex items-center gap-2">
-                      <Utensils className="w-4 h-4" />
-                      Instant Breakdown
-                    </div>
-                  </div>
-                  <p className="text-center text-muted-foreground">
-                    10-12s demo loop: Experience the full Coach C workflow
-                  </p>
-                </CardContent>
-              </Card>
             </div>
           </div>
         </div>

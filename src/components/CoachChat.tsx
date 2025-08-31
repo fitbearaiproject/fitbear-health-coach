@@ -8,6 +8,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Mic, MicOff, Volume2, VolumeX, Square, ChevronDown, Activity, User } from "lucide-react";
+import coachPhoto from "@/assets/coach-photo.png";
 
 interface Message {
   id: string;
@@ -442,8 +443,8 @@ export function CoachChat({ userId }: CoachChatProps) {
       </div>
 
       <div className="flex items-center gap-3 mb-6">
-        <Avatar className="w-12 h-12">
-          <AvatarImage src="/coach-avatar.png" alt="Coach C" />
+        <Avatar className="w-[72px] h-[72px]">
+          <AvatarImage src={coachPhoto} alt="Coach C avatar" />
           <AvatarFallback className="bg-gradient-primary text-primary-foreground font-bold">
             C
           </AvatarFallback>

@@ -27,29 +27,34 @@ serve(async (req) => {
 
   try {
     const { text, voice } = await req.json();
-    
-    if (!text) {
+
+    if (!text || typeof text !== 'string' || !text.trim()) {
       throw new Error('Text is required');
     }
 
-    const voiceModel = voice || 'aura-2-hermes-en';
+    const voiceModel = (voice && typeof voice === 'string') ? voice : 'aura-2-hermes-en';
 
-    // Call Deepgram TTS API with aura-2-hermes-en voice
-    const response = await fetch(`https://api.deepgram.com/v1/speak?model=${voiceModel}`, {
+    // Optimize for low latency: smaller bitrate keeps payloads light
+    const query = new URLSearchParams({
+      model: voiceModel,
+      encoding: 'mp3',
+      bit_rate: '32000',
+    }).toString();
+
+    const response = await fetch(`https://api.deepgram.com/v1/speak?${query}`, {
       method: 'POST',
       headers: {
         'Authorization': `Token ${Deno.env.get('DEEPGRAM_API_KEY')}`,
         'Content-Type': 'application/json',
+        'Accept': 'audio/mpeg',
       },
-      body: JSON.stringify({
-        text: text,
-        speed: 1.2
-      }),
+      // Deepgram expects exactly one of { text | url } in JSON body
+      body: JSON.stringify({ text: text.trim() }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Deepgram TTS error: ${errorText}`);
+      throw new Error(`Deepgram TTS error (${response.status}): ${errorText}`);
     }
 
     // Get audio buffer and convert to base64 safely
@@ -58,7 +63,7 @@ serve(async (req) => {
     const latencyMs = Date.now() - startTime;
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         audioContent: base64Audio,
         audio_mime: 'audio/mpeg',
         voice_used: voiceModel,
@@ -68,12 +73,12 @@ serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in deepgram-tts function:', error);
     const latencyMs = Date.now() - startTime;
-    
+
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         error: error.message,
         request_id: requestId,
         latency_ms: latencyMs,
