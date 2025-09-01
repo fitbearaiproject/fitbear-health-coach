@@ -17,10 +17,10 @@ export default function Landing({
             <div className="w-10 h-10 rounded-full border-2 border-dashed border-muted-foreground/40 flex items-center justify-center bg-muted/20">
               <span className="text-xs font-medium text-muted-foreground">LOGO</span>
             </div>
-            <h1 className="text-xl font-bold tracking-tight">FITBEAR AI</h1>
+            <h1 className="text-lg sm:text-xl font-bold tracking-tight">FITBEAR AI</h1>
           </div>
           <div className="flex items-center gap-3">
-            <Button onClick={onGetStarted} className="bg-gradient-primary">
+            <Button onClick={onGetStarted} className="bg-gradient-primary text-sm sm:text-base px-3 sm:px-4">
               Get Started
             </Button>
           </div>
@@ -28,16 +28,16 @@ export default function Landing({
       </header>
 
       {/* Hero Section */}
-      <section className="py-20 px-4">
+      <section className="py-16 sm:py-20 px-4">
         <div className="container mx-auto max-w-4xl">
-          <div className="text-center space-y-8">
-            <h2 className="text-4xl md:text-6xl font-bold leading-tight">FitBear AI: Health and Nutrition powered by the The Fit Bear philosophy!</h2>
-            <p className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">Chat or speak with Coach C to get personal guidance on meals, workouts, and everyday choices—built for Indian food and routines but catering to a global audience.</p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
-              <Button size="lg" className="bg-gradient-primary px-10 py-4" onClick={onGetStarted}>
+          <div className="text-center space-y-6 sm:space-y-8">
+            <h2 className="text-3xl sm:text-4xl md:text-6xl font-bold leading-tight">FitBear AI: Health and Nutrition powered by the The Fit Bear philosophy!</h2>
+            <p className="text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">Chat or speak with Coach C to get personal guidance on meals, workouts, and everyday choices—built for Indian food and routines but catering to a global audience.</p>
+            <div className="flex flex-col gap-4 justify-center items-center pt-4">
+              <Button size="lg" className="bg-gradient-primary px-8 sm:px-10 py-3 sm:py-4 text-base sm:text-lg" onClick={onGetStarted}>
                 Get Started Free
               </Button>
-              <div className="flex items-center gap-6 text-sm text-muted-foreground">
+              <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 text-sm text-muted-foreground">
                 <div className="flex items-center gap-2"><Mic className="w-4 h-4" />Voice</div>
                 <div className="flex items-center gap-2"><MessageCircle className="w-4 h-4" />Chat</div>
                 <div className="flex items-center gap-2"><Camera className="w-4 h-4" />Photo</div>
@@ -48,25 +48,25 @@ export default function Landing({
       </section>
 
       {/* Pain → Promise → Proof */}
-      <section className="py-20 bg-muted/30">
+      <section className="py-16 sm:py-20 bg-muted/30">
         <div className="container mx-auto px-4 max-w-6xl">
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
             <div className="text-center space-y-4">
-              <h3 className="text-xl font-semibold text-destructive">The Problem</h3>
-              <ul className="space-y-2 text-muted-foreground">
+              <h3 className="text-lg sm:text-xl font-semibold text-destructive">The Problem</h3>
+              <ul className="space-y-2 text-muted-foreground text-sm sm:text-base">
                 <li>"Confusing diets."</li>
                 <li>"Western apps don't get Indian food."</li>
                 <li>"No time for gyms."</li>
               </ul>
             </div>
             <div className="text-center space-y-4">
-              <h3 className="text-xl font-semibold text-primary">Our Promise</h3>
-              <p className="text-muted-foreground">
+              <h3 className="text-lg sm:text-xl font-semibold text-primary">Our Promise</h3>
+              <p className="text-muted-foreground text-sm sm:text-base">
                 "Daily guidance that fits your thali, your routine, your budget."
               </p>
             </div>
             <div className="text-center space-y-4">
-              <h3 className="text-xl font-semibold text-secondary">The Proof</h3>
+              <h3 className="text-lg sm:text-xl font-semibold text-secondary">The Proof</h3>
               <div className="space-y-2">
                 <p className="text-2xl font-bold text-primary">+19%</p>
                 <p className="text-sm text-muted-foreground">
@@ -79,34 +79,34 @@ export default function Landing({
       </section>
 
       {/* How it works */}
-      <section className="py-20">
+      <section className="py-16 sm:py-20">
         <div className="container mx-auto px-4 max-w-6xl">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">How it works</h2>
-            <p className="text-xl text-muted-foreground">Simple. Personal. Effective.</p>
+          <div className="text-center mb-12 sm:mb-16">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4">How it works</h2>
+            <p className="text-lg sm:text-xl text-muted-foreground">Simple. Personal. Effective.</p>
           </div>
           
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
             <div className="text-center space-y-4">
-              <div className="w-16 h-16 bg-gradient-primary rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl font-bold text-primary-foreground">1</span>
+              <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gradient-primary rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-lg sm:text-2xl font-bold text-primary-foreground">1</span>
               </div>
-              <h3 className="text-xl font-semibold">Create Profile</h3>
-              <p className="text-muted-foreground">Goals, health flags, Veg/Jain preferences, and your schedule.</p>
+              <h3 className="text-lg sm:text-xl font-semibold">Create Profile</h3>
+              <p className="text-muted-foreground text-sm sm:text-base">Goals, health flags, Veg/Jain preferences, and your schedule.</p>
             </div>
             <div className="text-center space-y-4">
-              <div className="w-16 h-16 bg-gradient-primary rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl font-bold text-primary-foreground">2</span>
+              <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gradient-primary rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-lg sm:text-2xl font-bold text-primary-foreground">2</span>
               </div>
-              <h3 className="text-xl font-semibold">Talk to Coach C</h3>
-              <p className="text-muted-foreground">Text or voice chat to get Coach C to give you expert guidance.</p>
+              <h3 className="text-lg sm:text-xl font-semibold">Talk to Coach C</h3>
+              <p className="text-muted-foreground text-sm sm:text-base">Text or voice chat to get Coach C to give you expert guidance.</p>
             </div>
             <div className="text-center space-y-4">
-              <div className="w-16 h-16 bg-gradient-primary rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl font-bold text-primary-foreground">3</span>
+              <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gradient-primary rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-lg sm:text-2xl font-bold text-primary-foreground">3</span>
               </div>
-              <h3 className="text-xl font-semibold">Snap Your Meals</h3>
-              <p className="text-muted-foreground">
+              <h3 className="text-lg sm:text-xl font-semibold">Snap Your Meals</h3>
+              <p className="text-muted-foreground text-sm sm:text-base">
                 Instant macros analysis and real-time adjustments.
               </p>
             </div>

@@ -175,28 +175,28 @@ export function Dashboard() {
   }
 
   return (
-    <div className="flex-1 p-6 space-y-6">
+    <div className="flex-1 p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Good morning! 🌟</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Good morning! 🌟</h1>
           <p className="text-muted-foreground">Let's make today a healthy one</p>
         </div>
-        <div className="text-right">
+        <div className="text-left sm:text-right">
           <p className="text-sm text-muted-foreground">Today</p>
           <p className="text-lg font-semibold">{new Date().toLocaleDateString()}</p>
         </div>
       </div>
 
       {/* Quick Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <Card className="bg-gradient-primary text-primary-foreground shadow-primary">
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex items-center gap-3">
-              <Flame className="w-8 h-8" />
-              <div>
+              <Flame className="w-6 h-6 sm:w-8 sm:h-8 flex-shrink-0" />
+              <div className="min-w-0">
                 <p className="text-sm opacity-90">Calories Today</p>
-                <p className="text-2xl font-bold">{todayStats.calories}</p>
+                <p className="text-xl sm:text-2xl font-bold truncate">{todayStats.calories}</p>
                 <p className="text-xs opacity-75">of {todayStats.targetCalories}</p>
               </div>
             </div>
@@ -204,12 +204,12 @@ export function Dashboard() {
         </Card>
 
         <Card className="bg-gradient-secondary text-secondary-foreground shadow-secondary">
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex items-center gap-3">
-              <Activity className="w-8 h-8" />
-              <div>
+              <Activity className="w-6 h-6 sm:w-8 sm:h-8 flex-shrink-0" />
+              <div className="min-w-0">
                 <p className="text-sm opacity-90">Protein</p>
-                <p className="text-2xl font-bold">{todayStats.protein}g</p>
+                <p className="text-xl sm:text-2xl font-bold truncate">{todayStats.protein}g</p>
                 <p className="text-xs opacity-75">of {todayStats.targetProtein}g</p>
               </div>
             </div>
@@ -217,12 +217,12 @@ export function Dashboard() {
         </Card>
 
         <Card className="bg-gradient-success text-success-foreground shadow-glow">
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex items-center gap-3">
-              <Apple className="w-8 h-8" />
-              <div>
+              <Apple className="w-6 h-6 sm:w-8 sm:h-8 flex-shrink-0" />
+              <div className="min-w-0">
                 <p className="text-sm opacity-90">Carbs</p>
-                <p className="text-2xl font-bold">{todayStats.carbs}g</p>
+                <p className="text-xl sm:text-2xl font-bold truncate">{todayStats.carbs}g</p>
                 <p className="text-xs opacity-75">of {todayStats.targetCarbs}g</p>
               </div>
             </div>
@@ -230,19 +230,19 @@ export function Dashboard() {
         </Card>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex items-center gap-3">
-              <Droplets className="w-8 h-8 text-accent" />
-              <div className="flex-1">
+              <Droplets className="w-6 h-6 sm:w-8 sm:h-8 text-accent flex-shrink-0" />
+              <div className="flex-1 min-w-0">
                 <p className="text-sm text-muted-foreground">Water</p>
-                <p className="text-2xl font-bold">{todayStats.water} cups</p>
+                <p className="text-xl sm:text-2xl font-bold truncate">{todayStats.water} cups</p>
                 <p className="text-xs text-muted-foreground">of {todayStats.targetWater}</p>
               </div>
               <div className="flex flex-col gap-1">
                 <Button
                   size="sm"
                   onClick={() => updateWater(1)}
-                  className="h-8 w-8 p-0"
+                  className="h-8 w-8 p-0 touch-manipulation"
                 >
                   <Plus className="h-4 w-4" />
                 </Button>
@@ -250,7 +250,7 @@ export function Dashboard() {
                   size="sm"
                   variant="outline"
                   onClick={() => updateWater(-1)}
-                  className="h-8 w-8 p-0"
+                  className="h-8 w-8 p-0 touch-manipulation"
                   disabled={todayStats.water === 0}
                 >
                   <Minus className="h-4 w-4" />
@@ -262,57 +262,57 @@ export function Dashboard() {
       </div>
 
       {/* Progress Tracking */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
         {/* Today's Progress */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Target className="w-5 h-5" />
-              Today's Nutrition Progress
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+              <Target className="w-5 h-5 flex-shrink-0" />
+              <span className="truncate">Today's Nutrition Progress</span>
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-4 sm:space-y-6">
             <div>
               <div className="flex justify-between text-sm mb-2">
                 <span>Calories</span>
-                <span>{todayStats.calories}/{todayStats.targetCalories}</span>
+                <span className="font-medium">{todayStats.calories}/{todayStats.targetCalories}</span>
               </div>
               <Progress 
                 value={(todayStats.calories / todayStats.targetCalories) * 100} 
-                className="h-2"
+                className="h-3"
               />
             </div>
             
             <div>
               <div className="flex justify-between text-sm mb-2">
                 <span>Protein</span>
-                <span>{todayStats.protein}g/{todayStats.targetProtein}g</span>
+                <span className="font-medium">{todayStats.protein}g/{todayStats.targetProtein}g</span>
               </div>
               <Progress 
                 value={(todayStats.protein / todayStats.targetProtein) * 100} 
-                className="h-2"
+                className="h-3"
               />
             </div>
             
             <div>
               <div className="flex justify-between text-sm mb-2">
                 <span>Carbs</span>
-                <span>{todayStats.carbs}g/{todayStats.targetCarbs}g</span>
+                <span className="font-medium">{todayStats.carbs}g/{todayStats.targetCarbs}g</span>
               </div>
               <Progress 
                 value={(todayStats.carbs / todayStats.targetCarbs) * 100} 
-                className="h-2"
+                className="h-3"
               />
             </div>
             
             <div>
               <div className="flex justify-between text-sm mb-2">
                 <span>Fat</span>
-                <span>{todayStats.fat}g/{todayStats.targetFat}g</span>
+                <span className="font-medium">{todayStats.fat}g/{todayStats.targetFat}g</span>
               </div>
               <Progress 
                 value={(todayStats.fat / todayStats.targetFat) * 100} 
-                className="h-2"
+                className="h-3"
               />
             </div>
           </CardContent>
@@ -320,24 +320,24 @@ export function Dashboard() {
 
         {/* Weekly Overview */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5" />
-              Weekly Calories Overview
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+              <TrendingUp className="w-5 h-5 flex-shrink-0" />
+              <span className="truncate">Weekly Calories Overview</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               {weeklyProgress.map((day, index) => (
                 <div key={day.day} className="flex items-center gap-3">
-                  <span className="text-sm font-medium w-10">{day.day}</span>
+                  <span className="text-sm font-medium w-10 flex-shrink-0">{day.day}</span>
                   <div className="flex-1">
                     <Progress 
                       value={(day.calories / todayStats.targetCalories) * 100} 
-                      className="h-2"
+                      className="h-3"
                     />
                   </div>
-                  <span className="text-sm text-muted-foreground w-16 text-right">
+                  <span className="text-sm text-muted-foreground w-16 text-right flex-shrink-0">
                     {day.calories}
                   </span>
                 </div>
@@ -349,52 +349,52 @@ export function Dashboard() {
 
       {/* Quick Actions */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Zap className="w-5 h-5" />
-            Quick Actions
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+            <Zap className="w-5 h-5 flex-shrink-0" />
+            <span>Quick Actions</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
             <Button 
-              className="h-20 bg-gradient-primary shadow-primary"
+              className="h-16 sm:h-20 bg-gradient-primary shadow-primary touch-manipulation"
               onClick={() => {
                 const navEvent = new CustomEvent('navigate', { detail: 'coach' });
                 window.dispatchEvent(navEvent);
               }}
             >
               <div className="text-center">
-                <MessageCircle className="w-6 h-6 mx-auto mb-2" />
-                <span>Chat with Coach C</span>
+                <MessageCircle className="w-5 h-5 sm:w-6 sm:h-6 mx-auto mb-1 sm:mb-2" />
+                <span className="text-sm sm:text-base">Chat with Coach C</span>
               </div>
             </Button>
             
             <Button 
               variant="outline" 
-              className="h-20"
+              className="h-16 sm:h-20 touch-manipulation"
               onClick={() => {
                 const navEvent = new CustomEvent('navigate', { detail: 'meal-scanner' });
                 window.dispatchEvent(navEvent);
               }}
             >
               <div className="text-center">
-                <Camera className="w-6 h-6 mx-auto mb-2" />
-                <span>Scan Meal</span>
+                <Camera className="w-5 h-5 sm:w-6 sm:h-6 mx-auto mb-1 sm:mb-2" />
+                <span className="text-sm sm:text-base">Scan Meal</span>
               </div>
             </Button>
             
             <Button 
               variant="outline" 
-              className="h-20"
+              className="h-16 sm:h-20 touch-manipulation"
               onClick={() => {
                 const navEvent = new CustomEvent('navigate', { detail: 'menu-scanner' });
                 window.dispatchEvent(navEvent);
               }}
             >
               <div className="text-center">
-                <Utensils className="w-6 h-6 mx-auto mb-2" />
-                <span>Scan Menu</span>
+                <Utensils className="w-5 h-5 sm:w-6 sm:h-6 mx-auto mb-1 sm:mb-2" />
+                <span className="text-sm sm:text-base">Scan Menu</span>
               </div>
             </Button>
           </div>

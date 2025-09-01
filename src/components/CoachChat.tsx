@@ -528,12 +528,12 @@ export function CoachChat({ userId }: CoachChatProps) {
   }
 
   return (
-    <div className="flex-1 flex flex-col p-6 max-w-4xl mx-auto">
+    <div className="flex-1 flex flex-col p-3 sm:p-6 max-w-4xl mx-auto">
       {/* Auth Status Chip */}
-      <div className="mb-4 flex items-center gap-2">
-        <Badge variant="outline" className="gap-2">
+      <div className="mb-4 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
+        <Badge variant="outline" className="gap-2 px-3 py-1">
           <User className="w-3 h-3" />
-          Signed in as {userEmail}
+          <span className="truncate max-w-[200px]">Signed in as {userEmail}</span>
         </Badge>
         
         {/* Diagnostics Toggle */}
@@ -545,8 +545,8 @@ export function CoachChat({ userId }: CoachChatProps) {
               <ChevronDown className="w-3 h-3" />
             </Button>
           </CollapsibleTrigger>
-          <CollapsibleContent className="mt-2 p-3 bg-muted rounded-lg text-sm">
-            <div className="grid grid-cols-2 gap-2">
+          <CollapsibleContent className="mt-2 p-3 bg-muted rounded-lg text-sm overflow-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>Request ID: {lastDiagnostics.request_id || 'N/A'}</div>
               <div>Endpoint: {lastDiagnostics.endpoint || 'N/A'}</div>
               <div>Status: {lastDiagnostics.status || 'N/A'}</div>
@@ -574,7 +574,7 @@ export function CoachChat({ userId }: CoachChatProps) {
                 <div>TTS Bytes: {lastDiagnostics.tts_bytes}</div>
               )}
               {lastDiagnostics.error_class && (
-                <div className="col-span-2 text-red-600">
+                <div className="col-span-1 sm:col-span-2 text-red-600 break-words">
                   Error: {lastDiagnostics.error_class} - {lastDiagnostics.error_cause}
                 </div>
               )}
@@ -583,45 +583,47 @@ export function CoachChat({ userId }: CoachChatProps) {
         </Collapsible>
       </div>
 
-      <div className="flex items-center gap-3 mb-6">
-        <Avatar className="w-20 h-20">
+      {/* Coach Header */}
+      <div className="flex items-center gap-3 mb-4 sm:mb-6">
+        <Avatar className="w-16 h-16 sm:w-20 sm:h-20">
           <AvatarImage src="/lovable-uploads/00de3c1c-78fb-4830-8c11-79cdf5a2069d.png" alt="Coach C avatar" />
           <AvatarFallback className="bg-gradient-primary text-primary-foreground font-bold text-lg">
             C
           </AvatarFallback>
         </Avatar>
         <div>
-          <h1 className="text-3xl font-bold gradient-text">Coach C</h1>
-          <p className="text-muted-foreground">Your AI Fitness & Nutrition Coach</p>
+          <h1 className="text-2xl sm:text-3xl font-bold gradient-text">Coach C</h1>
+          <p className="text-muted-foreground text-sm sm:text-base">Your AI Fitness & Nutrition Coach</p>
         </div>
       </div>
 
-      <div className="flex-1 border rounded-lg bg-card">
-        <ScrollArea className="h-[500px] p-4" ref={scrollAreaRef}>
+      {/* Chat Container */}
+      <div className="flex-1 border rounded-lg bg-card overflow-hidden flex flex-col">
+        <ScrollArea className="flex-1 p-3 sm:p-4" ref={scrollAreaRef}>
           <div className="space-y-4">
             {messages.map((message) => (
               <div
                 key={message.id}
-                className={`flex gap-3 ${
+                className={`flex gap-2 sm:gap-3 ${
                   message.role === 'user' ? 'justify-end' : 'justify-start'
                 }`}
               >
                 {message.role === 'assistant' && (
-                  <Avatar className="w-8 h-8">
+                  <Avatar className="w-6 h-6 sm:w-8 sm:h-8 flex-shrink-0">
                      <AvatarImage src="/lovable-uploads/00de3c1c-78fb-4830-8c11-79cdf5a2069d.png" alt="Coach C" />
-                    <AvatarFallback className="bg-gradient-primary text-primary-foreground text-sm">
+                    <AvatarFallback className="bg-gradient-primary text-primary-foreground text-xs sm:text-sm">
                       C
                     </AvatarFallback>
                   </Avatar>
                 )}
                 <div
-                  className={`max-w-[80%] p-3 rounded-lg ${
+                  className={`max-w-[85%] sm:max-w-[80%] p-3 rounded-lg ${
                     message.role === 'user'
                       ? 'bg-primary text-primary-foreground ml-auto'
                       : 'bg-muted'
                   }`}
                 >
-                  <p className="text-sm">{message.content}</p>
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
                   <p className="text-xs opacity-70 mt-1">
                     {message.timestamp.toLocaleTimeString()}
                   </p>
@@ -629,10 +631,10 @@ export function CoachChat({ userId }: CoachChatProps) {
               </div>
             ))}
             {isLoading && (
-              <div className="flex gap-3 justify-start">
-                <Avatar className="w-8 h-8">
+              <div className="flex gap-2 sm:gap-3 justify-start">
+                <Avatar className="w-6 h-6 sm:w-8 sm:h-8 flex-shrink-0">
                   <AvatarImage src="/lovable-uploads/00de3c1c-78fb-4830-8c11-79cdf5a2069d.png" alt="Coach C" />
-                  <AvatarFallback className="bg-gradient-primary text-primary-foreground text-sm">
+                  <AvatarFallback className="bg-gradient-primary text-primary-foreground text-xs sm:text-sm">
                     C
                   </AvatarFallback>
                 </Avatar>
@@ -648,17 +650,19 @@ export function CoachChat({ userId }: CoachChatProps) {
           </div>
         </ScrollArea>
 
-        <div className="border-t p-4">
+        {/* Input Area */}
+        <div className="border-t p-3 sm:p-4 bg-card">
           {/* Controls */}
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex flex-wrap items-center gap-2 mb-3">
             <Button
               variant={autoSpeak ? "default" : "outline"}
               size="sm"
               onClick={() => setAutoSpeak(!autoSpeak)}
-              className="gap-2"
+              className="gap-2 text-xs sm:text-sm touch-manipulation"
             >
               {autoSpeak ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-              Auto-speak {autoSpeak ? 'ON' : 'OFF'}
+              <span className="hidden sm:inline">Auto-speak {autoSpeak ? 'ON' : 'OFF'}</span>
+              <span className="sm:hidden">{autoSpeak ? 'ON' : 'OFF'}</span>
             </Button>
             
             {isPlaying && (
@@ -666,10 +670,11 @@ export function CoachChat({ userId }: CoachChatProps) {
                 variant="outline"
                 size="sm"
                 onClick={stopAudio}
-                className="gap-2"
+                className="gap-2 text-xs sm:text-sm touch-manipulation"
               >
                 <Square className="w-4 h-4" />
-                Stop Audio
+                <span className="hidden sm:inline">Stop Audio</span>
+                <span className="sm:hidden">Stop</span>
               </Button>
             )}
           </div>
@@ -682,7 +687,7 @@ export function CoachChat({ userId }: CoachChatProps) {
               placeholder="Type your message or use the mic..."
               onKeyPress={(e) => e.key === 'Enter' && handleSendMessage(inputValue)}
               disabled={isLoading || isRecording}
-              className="flex-1"
+              className="flex-1 min-w-0"
             />
             
             <Button
@@ -690,6 +695,7 @@ export function CoachChat({ userId }: CoachChatProps) {
               size="icon"
               onClick={isRecording ? stopRecording : startRecording}
               disabled={isLoading}
+              className="flex-shrink-0 touch-manipulation"
             >
               {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
             </Button>
@@ -697,8 +703,10 @@ export function CoachChat({ userId }: CoachChatProps) {
             <Button
               onClick={() => handleSendMessage(inputValue)}
               disabled={!inputValue.trim() || isLoading || isRecording}
+              className="flex-shrink-0 touch-manipulation"
             >
-              Send
+              <span className="hidden sm:inline">Send</span>
+              <span className="sm:hidden">→</span>
             </Button>
           </div>
         </div>

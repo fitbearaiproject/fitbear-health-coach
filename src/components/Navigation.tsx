@@ -16,6 +16,7 @@ import fitbearLogo from "@/assets/fitbear-logo.png";
 interface NavigationProps {
   currentPage: string;
   onNavigate: (page: string) => void;
+  isMobile?: boolean;
 }
 
 const navItems = [
@@ -28,10 +29,14 @@ const navItems = [
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
-export function Navigation({ currentPage, onNavigate }: NavigationProps) {
+export function Navigation({ currentPage, onNavigate, isMobile = false }: NavigationProps) {
   const { signOut } = useAuth();
+  
   return (
-    <nav className="w-64 bg-card border-r border-border h-screen p-4 flex flex-col">
+    <nav className={cn(
+      "bg-card border-r border-border h-screen p-4 flex flex-col",
+      isMobile ? "w-full" : "w-64"
+    )}>
       {/* Logo */}
       <div className="flex items-center gap-3 mb-8 p-2">
         <div className="w-10 h-10 rounded-full overflow-hidden bg-white flex items-center justify-center">
@@ -54,13 +59,13 @@ export function Navigation({ currentPage, onNavigate }: NavigationProps) {
               key={item.id}
               variant={isActive ? "default" : "ghost"}
               className={cn(
-                "w-full justify-start gap-3 h-12",
+                "w-full justify-start gap-3 h-12 text-left",
                 isActive && "bg-gradient-primary shadow-primary"
               )}
               onClick={() => onNavigate(item.id)}
             >
-              <Icon className="w-5 h-5" />
-              {item.label}
+              <Icon className="w-5 h-5 flex-shrink-0" />
+              <span className="truncate">{item.label}</span>
             </Button>
           );
         })}
@@ -72,8 +77,8 @@ export function Navigation({ currentPage, onNavigate }: NavigationProps) {
         className="justify-start gap-3 h-12 text-destructive"
         onClick={signOut}
       >
-        <LogOut className="w-5 h-5" />
-        Logout
+        <LogOut className="w-5 h-5 flex-shrink-0" />
+        <span>Logout</span>
       </Button>
     </nav>
   );
