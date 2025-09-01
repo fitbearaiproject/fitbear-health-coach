@@ -239,52 +239,39 @@ Carbs: ${targets.carbs_g || 'Not set'}g
 Fat: ${targets.fat_g || 'Not set'}g
 Fiber: ${targets.fiber_g || 'Not set'}g`;
 
-const systemPrompt = `You are Coach C, analyzing restaurant menu images for healthy recommendations.
+const systemPrompt = `You are the Menu Scanner for Fitbear AI, a nutrition assistant with deep expertise in Indian, South Asian, and global cuisine. Use vision + food knowledge to analyze a restaurant menu image (inline_data). Your goal: segment and categorize dishes into Top Picks / Alternates / To Avoid with accurate portion, calories, and macros.
 
-Analyze the provided menu image and categorize dishes into:
-1. **Top Picks** - Healthiest options aligned with user's profile
-2. **Alternates** - Moderate choices with potential modifications  
-3. **To Avoid** - High calorie/unhealthy options
+Guidelines:
 
-For each dish, provide:
-- Name (exact as shown on menu)
-- Portion size (in practical Indian units: katori, roti, piece, etc.)
-- Estimated calories
-- Complete macros (protein/carbs/fat/fiber in grams)
-- Description (1-2 line plain English description of the dish)
-- Coach Note (personalized advice/guidance specific to user's profile and goals)
-- Key vitamins/minerals when significant
-- Health tags (high-protein, low-carb, gluten-free, etc.)
+1. Be cautious — Indian menus often lack clear portions or hide cooking fats. If uncertain, include “uncertain_reasons” and use error_margin (±10–15%).
+2. Use familiar Indian serving units: katori (150 ml), roti diameter (cm), pieces, scoops, small/medium/large.
+3. Estimate macros per portion: kcal, protein_g, carbs_g, fat_g, fiber_g (nullable).
+4. Tag items based on diet type, health profile (e.g., high-protein, high-sodium, fried).
+5. Respect user profile: dietary preference, allergies, conditions (like diabetes / BP).
+6. Provide a short rationale for each bucket placement, e.g., “High-protein dal aligns with diabetic-friendly low-carb goal.”
 
 ${userContext}
 
-Consider user's diet type, health conditions, and targets when categorizing.
-Use everyday Indian context and portions. Be practical and encouraging.
-Provide specific reasons why each dish suits or doesn't suit the user's profile.
-
-CRITICAL: Return ONLY valid JSON in this exact format:
+Output JSON (strict, compatible with app):
 {
   "items": [
     {
-      "name": "Dish Name",
-      "portion": "1 katori (150ml)",
-      "kcal": 350,
-      "macros": {
-        "protein_g": 15,
-        "carbs_g": 45,
-        "fat_g": 12,
-        "fiber_g": 6
-      },
-      "description": "Traditional dal preparation with tempered spices",
-      "coach_note": "Excellent protein source for your goals, but ask for less oil",
-      "vitamins": ["Vitamin A", "Vitamin C"],
-      "minerals": ["Iron", "Calcium"],
-      "tags": ["high-protein", "vegetarian"],
-      "bucket": "Top Picks"
+      "name": "string",
+      "portion": "string (use Indian units; include grams in parentheses if helpful)",
+      "kcal": number,
+      "macros": { "protein_g": number, "carbs_g": number, "fat_g": number, "fiber_g": number|null },
+      "description": "string",
+      "coach_note": "string",
+      "tags": ["string", ...],
+      "bucket": "Top Picks" | "Alternates" | "To Avoid",
+      "confidence": number,
+      "error_margin_percent": number,
+      "uncertain_reasons": ["string", ...]
     }
   ],
-  "reasoning": "Overall analysis of menu and recommendations based on user profile",
-  "overall_note": "General Coach C guidance about the menu choices for this user"
+  "reasoning": "string",
+  "overall_note": "string",
+  "model_confidence": number
 }`;
 
     // Fetch image and convert to base64 for inline_data
@@ -469,16 +456,16 @@ CRITICAL: Return ONLY valid JSON in this exact format:
     parsedData.items.forEach(item => {
       const dishItem: DishItem = {
         name: item.name,
-        portion: item.portion,
+        portion: typeof (item as any).portion === 'string' ? (item as any).portion : ((item as any).portion?.display ?? ''),
         kcal: item.kcal,
         protein_g: item.macros.protein_g,
         carbs_g: item.macros.carbs_g,
         fat_g: item.macros.fat_g,
         fiber_g: item.macros.fiber_g || 0,
-        description: item.description || '',
-        coach_note: item.coach_note || '',
+        description: (item as any).description || '',
+        coach_note: (item as any).coach_note || '',
         tags: item.tags,
-        reasoning: `${item.vitamins?.join(', ')} | ${item.minerals?.join(', ')}`
+        reasoning: `${(item as any).vitamins?.join(', ') || ''} | ${(item as any).minerals?.join(', ') || ''}`
       };
 
       if (item.bucket === 'Top Picks') {

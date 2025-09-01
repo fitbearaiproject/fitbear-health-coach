@@ -149,74 +149,83 @@ export default function MenuScanner() {
     setError('');
     setDiagnostics(null);
 
+    const bps_profile = {
+      diet_type: userProfile.diet_type,
+      conditions: userProfile.conditions || [],
+      activity_level: userProfile.activity_level,
+      health_goals: userProfile.health_goals,
+      allergies: userProfile.allergies || [],
+      cuisines: userProfile.cuisines || []
+    };
+    const targets = (userProfile.targets as any) || {};
+
     try {
-      // Process first image only for now (can be extended for multiple)
-      const { signedUrl, originalSize, processedSize } = await ImageProcessor.processAndUpload(selectedImages[0]);
-      
-      // Build profile and targets data
-      const bps_profile = {
-        diet_type: userProfile.diet_type,
-        conditions: userProfile.conditions || [],
-        activity_level: userProfile.activity_level,
-        health_goals: userProfile.health_goals,
-        allergies: userProfile.allergies || [],
-        cuisines: userProfile.cuisines || []
-      };
-      
-      const targets = (userProfile.targets as any) || {};
+      let lastErr: any = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        // Fresh upload each attempt to avoid signed URL expiry/cache issues
+        const { signedUrl, originalSize, processedSize } = await ImageProcessor.processAndUpload(selectedImages[0]);
 
-      const requestData: MenuScanRequest = {
-        image_url: signedUrl,
-        bps_profile,
-        targets
-      };
+        const requestData: MenuScanRequest = {
+          image_url: signedUrl,
+          bps_profile,
+          targets
+        };
 
-      console.log('Sending menu scan request:', { originalSize, processedSize });
+        console.log('Sending menu scan request:', { attempt: attempt + 1, originalSize, processedSize });
 
-      const { data, error: supabaseError } = await supabase.functions.invoke('menu-parse', {
-        body: requestData
-      });
+        try {
+          const { data, error: supabaseError } = await supabase.functions.invoke('menu-parse', {
+            body: requestData
+          });
 
-      // Cleanup uploaded image
-      setTimeout(() => ImageProcessor.cleanup(signedUrl), 5000);
+          // Cleanup uploaded image (non-blocking)
+          setTimeout(() => ImageProcessor.cleanup(signedUrl), 5000);
 
-      if (supabaseError) throw supabaseError;
+          if (supabaseError) throw supabaseError;
+          if (data?.error) {
+            setDiagnostics({
+              request_id: data.request_id,
+              status: 'error',
+              latency_ms: data.latency_ms,
+              model: data.model || 'unknown',
+              error_class: data.error_class,
+              image_px: `${Math.round(processedSize / 1024)}KB`,
+              json_parse_ok: false
+            });
+            throw new Error(data.error);
+          }
 
-      if (data.error) {
-        setDiagnostics({
-          request_id: data.request_id,
-          status: 'error',
-          latency_ms: data.latency_ms,
-          model: data.model || 'unknown',
-          error_class: data.error_class,
-          image_px: `${Math.round(processedSize / 1024)}KB`,
-          json_parse_ok: false
-        });
-        throw new Error(data.error);
+          // Success
+          setDiagnostics({
+            request_id: data.request_id,
+            status: data.status,
+            latency_ms: data.latency_ms,
+            model: data.model,
+            image_px: data.image_px,
+            json_parse_ok: data.json_parse_ok
+          });
+          setAnalysis(data as AnalysisResult);
+          toast({
+            title: 'Menu analyzed successfully!',
+            description: `Analyzed menu in ${data.latency_ms}ms. Check out your personalized recommendations below.`,
+          });
+          return; // exit after success
+        } catch (e: any) {
+          lastErr = e;
+          // brief backoff then retry with a fresh upload
+          if (attempt === 0) await new Promise(r => setTimeout(r, 1200));
+        }
       }
 
-      setDiagnostics({
-        request_id: data.request_id,
-        status: data.status,
-        latency_ms: data.latency_ms,
-        model: data.model,
-        image_px: data.image_px,
-        json_parse_ok: data.json_parse_ok
-      });
-
-      setAnalysis(data as AnalysisResult);
-      toast({
-        title: "Menu analyzed successfully!",
-        description: `Analyzed menu in ${data.latency_ms}ms. Check out your personalized recommendations below.`,
-      });
-
+      // If we reach here, all attempts failed
+      throw lastErr || new Error('Failed to analyze menu');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to analyze menu';
       setError(errorMessage);
       toast({
-        title: "Analysis failed",
+        title: 'Analysis failed',
         description: errorMessage,
-        variant: "destructive",
+        variant: 'destructive',
       });
     } finally {
       setIsAnalyzing(false);
