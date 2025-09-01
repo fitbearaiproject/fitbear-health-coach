@@ -585,7 +585,7 @@ export function CoachChat({ userId }: CoachChatProps) {
 
       <div className="flex items-center gap-3 mb-6">
         <Avatar className="w-20 h-20">
-          <AvatarImage src="/images/coach-cc.png" alt="Coach C avatar" />
+          <AvatarImage src="/lovable-uploads/00de3c1c-78fb-4830-8c11-79cdf5a2069d.png" alt="Coach C avatar" />
           <AvatarFallback className="bg-gradient-primary text-primary-foreground font-bold text-lg">
             C
           </AvatarFallback>
@@ -608,7 +608,7 @@ export function CoachChat({ userId }: CoachChatProps) {
               >
                 {message.role === 'assistant' && (
                   <Avatar className="w-8 h-8">
-                     <AvatarImage src="/images/coach-cc.png" alt="Coach C" />
+                     <AvatarImage src="/lovable-uploads/00de3c1c-78fb-4830-8c11-79cdf5a2069d.png" alt="Coach C" />
                     <AvatarFallback className="bg-gradient-primary text-primary-foreground text-sm">
                       C
                     </AvatarFallback>
@@ -631,7 +631,7 @@ export function CoachChat({ userId }: CoachChatProps) {
             {isLoading && (
               <div className="flex gap-3 justify-start">
                 <Avatar className="w-8 h-8">
-                  <AvatarImage src="/images/coach-cc.png" alt="Coach C" />
+                  <AvatarImage src="/lovable-uploads/00de3c1c-78fb-4830-8c11-79cdf5a2069d.png" alt="Coach C" />
                   <AvatarFallback className="bg-gradient-primary text-primary-foreground text-sm">
                     C
                   </AvatarFallback>
