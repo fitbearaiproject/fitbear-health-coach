@@ -26,10 +26,29 @@ serve(async (req) => {
   const start = Date.now();
 
   try {
-    const { text, voice } = await req.json();
+    const url = new URL(req.url);
+    let text: string | undefined;
+    let voice: string | undefined;
+
+    if (req.method === 'GET') {
+      text = url.searchParams.get('text') || undefined;
+      voice = url.searchParams.get('voice') || undefined;
+    } else {
+      // Default to POST JSON
+      try {
+        const body = await req.json();
+        text = body?.text;
+        voice = body?.voice;
+      } catch (_) {
+        text = undefined;
+      }
+    }
 
     if (!text || typeof text !== 'string' || !text.trim()) {
-      throw new Error('Text is required');
+      return new Response(
+        JSON.stringify({ error: 'Text is required', request_id: requestId }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const voiceModel = (voice && typeof voice === 'string') ? voice : 'aura-2-hermes-en';

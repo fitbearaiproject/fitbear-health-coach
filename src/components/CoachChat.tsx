@@ -244,11 +244,8 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
         .trim();
 
     const SUPABASE_URL = "https://xnncvfuamecmjvvoaywz.supabase.co";
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhubmN2ZnVhbWVjbWp2dm9heXd6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY0NDkwMzUsImV4cCI6MjA3MjAyNTAzNX0.mJttLdAFIT0nFDGF3cj1mBYhqy5o7xUMUSfePILllGM";
 
-    const start = performance.now();
-    const clean = sanitizeForTTS(text);
-
+    // Stop any ongoing playback
     if (ttsAbortRef.current) {
       ttsAbortRef.current.abort();
       ttsAbortRef.current = null;
@@ -258,62 +255,76 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
       currentAudioRef.current = null;
     }
 
-    try {
-      setIsPlaying(true);
-      ttsBytesRef.current = 0;
+    const ctrl = new AbortController();
+    ttsAbortRef.current = ctrl;
 
-      const ctrl = new AbortController();
-      ttsAbortRef.current = ctrl;
+    const clean = sanitizeForTTS(text);
+    // Split into sentence-sized chunks (to start playback ASAP)
+    const sentences = (clean.match(/[^.!?]+[.!?]*/g) || [clean])
+      .map(s => s.trim())
+      .filter(Boolean);
 
-      const { data: { session } } = await supabase.auth.getSession();
+    let cancelled = false;
+    setIsPlaying(true);
 
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/deepgram-tts-stream`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token || SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ 
-          text: clean,
-          voice: 'aura-2-hermes-en' 
-        }),
-        signal: ctrl.signal,
-      });
-
-      if (res.ok) {
-        const blob = await res.blob();
-        const audioUrl = URL.createObjectURL(blob);
-        const audio = new Audio(audioUrl);
-        currentAudioRef.current = audio;
-
-        audio.onended = () => {
-          URL.revokeObjectURL(audioUrl);
-          setIsPlaying(false);
-          currentAudioRef.current = null;
-        };
-
-        audio.onerror = (e) => {
-          console.error('Audio playback error:', e);
-          setIsPlaying(false);
-          currentAudioRef.current = null;
-        };
-
-        await audio.play();
-        const end = performance.now();
-        console.log(`🎵 TTS: ${Math.round(end - start)}ms`);
-      } else {
-        throw new Error(`TTS failed: ${res.status}`);
+    const playNext = async (idx: number) => {
+      if (cancelled || idx >= sentences.length) {
+        setIsPlaying(false);
+        currentAudioRef.current = null;
+        return;
       }
-    } catch (error: any) {
-      console.error('TTS error:', error);
+
+      const segment = sentences[idx];
+      const url = `${SUPABASE_URL}/functions/v1/deepgram-tts-stream?voice=aura-2-hermes-en&text=${encodeURIComponent(segment)}`;
+      const audio = new Audio(url);
+      audio.preload = 'auto';
+
+      audio.onended = () => {
+        if (!cancelled) playNext(idx + 1);
+      };
+
+      audio.onerror = async () => {
+        // Fallback to buffered POST if streaming fails for this segment
+        try {
+          const res = await fetch(`${SUPABASE_URL}/functions/v1/deepgram-tts-stream`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: segment, voice: 'aura-2-hermes-en' }),
+            signal: ctrl.signal,
+          });
+          if (res.ok) {
+            const blob = await res.blob();
+            const objectUrl = URL.createObjectURL(blob);
+            audio.src = objectUrl;
+            audio.onended = () => {
+              URL.revokeObjectURL(objectUrl);
+              if (!cancelled) playNext(idx + 1);
+            };
+            try { await audio.play(); } catch {}
+          } else {
+            if (!cancelled) playNext(idx + 1);
+          }
+        } catch (_) {
+          if (!cancelled) playNext(idx + 1);
+        }
+      };
+
+      currentAudioRef.current = audio;
+      try { await audio.play(); } catch (_) { /* autoplay constraints */ }
+    };
+
+    // Begin playback
+    playNext(0);
+
+    // Handle cancel/abort
+    ctrl.signal.addEventListener('abort', () => {
+      cancelled = true;
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+      }
       setIsPlaying(false);
-      currentAudioRef.current = null;
-      
-      if (error.name !== 'AbortError') {
-        const end = performance.now();
-        console.log(`❌ TTS failed after ${Math.round(end - start)}ms:`, error.message);
-      }
-    }
+    });
   };
 
   const stopAudio = () => {

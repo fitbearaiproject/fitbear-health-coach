@@ -175,13 +175,36 @@ const Settings = () => {
         fat_g: targets.fat_g ? parseInt(targets.fat_g) : null
       };
 
-      const { error } = await supabase
+      // Upsert without unique constraint: do manual insert/update
+      const { data: existing, error: findError } = await supabase
         .from('targets')
-        .upsert(targetsData, {
-          onConflict: 'user_id'
-        });
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle();
 
-      if (error) throw error;
+      if (findError && findError.code !== 'PGRST116') throw findError;
+
+      if (existing) {
+        const { error: updError } = await supabase
+          .from('targets')
+          .update({
+            calories_per_day: targetsData.calories_per_day,
+            protein_g: targetsData.protein_g,
+            fiber_g: targetsData.fiber_g,
+            sodium_mg: targetsData.sodium_mg,
+            sugar_g: targetsData.sugar_g,
+            carbs_g: targetsData.carbs_g,
+            fat_g: targetsData.fat_g,
+            user_id: user.id
+          })
+          .eq('user_id', user.id);
+        if (updError) throw updError;
+      } else {
+        const { error: insError } = await supabase
+          .from('targets')
+          .insert(targetsData);
+        if (insError) throw insError;
+      }
 
       toast({
         title: "Success",
