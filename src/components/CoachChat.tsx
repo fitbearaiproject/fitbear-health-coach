@@ -160,17 +160,19 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
 
       if (error) throw error;
 
+      const botText: string = data?.text || data?.reply || data?.originalReply || '';
+
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: data.reply,
+        content: botText,
         role: 'assistant',
         timestamp: new Date()
       };
 
       setMessages(prev => [...prev, assistantMessage]);
 
-      if (autoSpeak && data.reply) {
-        await playAudio(data.reply);
+      if (autoSpeak && botText) {
+        await playAudio(botText);
       }
 
       toast({
@@ -194,17 +196,19 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
 
           if (retryError) throw retryError;
 
+          const botText: string = data?.text || data?.reply || data?.originalReply || '';
+
           const assistantMessage: Message = {
             id: (Date.now() + 1).toString(),
-            content: data.reply,
+            content: botText,
             role: 'assistant', 
             timestamp: new Date()
           };
 
           setMessages(prev => [...prev, assistantMessage]);
 
-          if (autoSpeak && data.reply) {
-            await playAudio(data.reply);
+          if (autoSpeak && botText) {
+            await playAudio(botText);
           }
           
           break;
