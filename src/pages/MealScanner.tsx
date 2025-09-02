@@ -8,11 +8,13 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { ImageProcessor, ScannerDiagnostics, MealScanRequest } from '@/lib/imageProcessor';
 import { Camera, Loader2, Upload, X, Plus, ImageIcon, Clock, Info } from 'lucide-react';
+import { NutritionBadges } from '@/components/NutritionBadges';
 
 interface DishItem {
   name: string;

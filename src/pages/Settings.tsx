@@ -8,7 +8,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Loader2, Trash2, Target } from "lucide-react";
+import { Loader2, Trash2, Target, Calculator } from "lucide-react";
 
 const Settings = () => {
   const { user } = useAuth();
@@ -24,12 +24,107 @@ const Settings = () => {
     carbs_g: '',
     fat_g: ''
   });
+  const [profile, setProfile] = useState<any>(null);
+  const [autoCalculating, setAutoCalculating] = useState(false);
 
   useEffect(() => {
     if (user) {
       loadTargets();
+      loadProfile();
     }
   }, [user]);
+
+  const loadProfile = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', user?.id)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      setProfile(data);
+    } catch (error) {
+      console.error('Error loading profile:', error);
+    }
+  };
+
+  const calculateNutritionTargets = () => {
+    if (!profile) return null;
+
+    const { weight_kg, height_cm, age_years, gender, activity_level, health_goals } = profile;
+    
+    if (!weight_kg || !height_cm || !age_years || !gender) {
+      toast({
+        title: "Incomplete Profile",
+        description: "Please complete your profile (weight, height, age, gender) to auto-calculate targets",
+        variant: "destructive"
+      });
+      return null;
+    }
+
+    // Mifflin-St Jeor BMR calculation
+    let bmr;
+    if (gender === 'male') {
+      bmr = (10 * weight_kg) + (6.25 * height_cm) - (5 * age_years) + 5;
+    } else {
+      bmr = (10 * weight_kg) + (6.25 * height_cm) - (5 * age_years) - 161;
+    }
+
+    // Activity multipliers
+    const activityMultipliers = {
+      sedentary: 1.2,
+      lightly_active: 1.375,
+      moderately_active: 1.55,
+      very_active: 1.725,
+      extra_active: 1.9
+    };
+
+    const multiplier = activityMultipliers[activity_level as keyof typeof activityMultipliers] || 1.2;
+    let tdee = bmr * multiplier;
+
+    // Adjust for health goals
+    if (health_goals?.toLowerCase().includes('weight loss')) {
+      tdee -= 300; // 300 cal deficit for gradual weight loss
+    } else if (health_goals?.toLowerCase().includes('muscle gain')) {
+      tdee += 200; // 200 cal surplus for muscle gain
+    }
+
+    // Macronutrient calculations
+    const protein = Math.round(weight_kg * 1.8); // 1.8g per kg bodyweight
+    const fat = Math.round((tdee * 0.25) / 9); // 25% of calories from fat
+    const carbs = Math.round((tdee - (protein * 4) - (fat * 9)) / 4); // Remaining calories from carbs
+    const fiber = Math.round(Math.max(25, weight_kg * 0.35)); // 25g minimum or 0.35g/kg
+    const sodium = 2300; // Standard recommendation
+    const sugar = Math.round(tdee * 0.1 / 4); // Max 10% of calories from added sugar
+
+    return {
+      calories_per_day: Math.round(tdee).toString(),
+      protein_g: protein.toString(),
+      carbs_g: carbs.toString(),
+      fat_g: fat.toString(),
+      fiber_g: fiber.toString(),
+      sodium_mg: sodium.toString(),
+      sugar_g: sugar.toString()
+    };
+  };
+
+  const autoCalculateTargets = async () => {
+    setAutoCalculating(true);
+    const calculated = calculateNutritionTargets();
+    
+    if (calculated) {
+      setTargets(calculated);
+      toast({
+        title: "Targets Calculated",
+        description: "Nutrition targets auto-calculated based on your profile. You can adjust them if needed."
+      });
+    }
+    setAutoCalculating(false);
+  };
 
   const loadTargets = async () => {
     try {
@@ -177,6 +272,30 @@ const Settings = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            <div className="flex gap-2 mb-4">
+              <Button 
+                onClick={autoCalculateTargets} 
+                disabled={autoCalculating || !profile}
+                variant="outline"
+                size="sm"
+              >
+                {autoCalculating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Calculating...
+                  </>
+                ) : (
+                  <>
+                    <Calculator className="h-4 w-4 mr-2" />
+                    Auto-Calculate
+                  </>
+                )}
+              </Button>
+              <span className="text-sm text-muted-foreground flex items-center">
+                Based on your profile and health goals
+              </span>
+            </div>
+            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="calories">Daily Calories</Label>

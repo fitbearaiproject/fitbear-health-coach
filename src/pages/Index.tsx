@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Navigation } from "@/components/Navigation";
 import { Dashboard } from "@/components/Dashboard";
 import { CoachChat } from "@/components/CoachChat";
+import { OnboardingCarousel } from "@/components/OnboardingCarousel";
 import MenuScanner from "./MenuScanner";
 import MealScanner from "./MealScanner";
 import Logs from "./Logs";
@@ -108,6 +109,9 @@ const Index = () => {
           {renderPage()}
         </div>
       </div>
+      
+      {/* Onboarding Carousel */}
+      <OnboardingCarousel />
     </div>
   );
 };

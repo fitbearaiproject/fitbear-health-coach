@@ -13,6 +13,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { ImageProcessor, ScannerDiagnostics, MenuScanRequest } from '@/lib/imageProcessor';
 import { Upload, Camera, Loader2, ThumbsUp, AlertTriangle, X, Plus, Info } from 'lucide-react';
+import { NutritionBadges } from '@/components/NutritionBadges';
 
 interface DishItem {
   name: string;

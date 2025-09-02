@@ -2,217 +2,235 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Mic, MicOff, Volume2, VolumeX, Square, ChevronDown, Activity, User } from "lucide-react";
-
+import { supabase } from "@/integrations/supabase/client";
+import { Send, Mic, MicOff, Volume2, VolumeX, MessageCircle, Loader2 } from "lucide-react";
 
 interface Message {
   id: string;
-  role: 'user' | 'assistant';
   content: string;
+  role: 'user' | 'assistant';
   timestamp: Date;
 }
 
-interface DiagnosticData {
-  request_id?: string;
-  endpoint?: string;
-  status?: number;
-  latency_ms?: number;
-  tokens_in?: number;
-  tokens_out?: number;
-  retry_count?: number;
-  error_class?: string;
-  error_cause?: string;
-  stt_language?: string;
-  stt_confidence?: number;
-  tts_voice?: string;
-  tts_status?: string;
-  tts_latency_ms?: number;
-  tts_bytes?: number;
-  model?: string;
-}
-
 interface CoachChatProps {
-  userId?: string;
+  userId: string;
 }
 
-export function CoachChat({ userId }: CoachChatProps) {
+export const CoachChat = ({ userId }: CoachChatProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [inputValue, setInputValue] = useState("");
+  const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [autoSpeak, setAutoSpeak] = useState(true);
+  const [isListening, setIsListening] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [authStatus, setAuthStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading');
-  const [userEmail, setUserEmail] = useState<string>('');
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
-  const [lastDiagnostics, setLastDiagnostics] = useState<DiagnosticData>({});
-  
+  const [autoSpeak, setAutoSpeak] = useState(true);
   const { toast } = useToast();
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+  
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<any>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const ttsAbortRef = useRef<AbortController | null>(null);
-  const ttsBytesRef = useRef<number>(0);
+  const ttsBytesRef = useRef(0);
   const ttsObjectUrlRef = useRef<string | null>(null);
 
-  // Check auth status
   useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        setAuthStatus('authenticated');
-        setUserEmail(session.user.email || '');
-      } else {
-        setAuthStatus('unauthenticated');
-      }
-    };
-
-    checkAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.user) {
-        setAuthStatus('authenticated');
-        setUserEmail(session.user.email || '');
-      } else {
-        setAuthStatus('unauthenticated');
-        setUserEmail('');
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    if (scrollAreaRef.current) {
-      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
-    }
+    scrollToBottom();
   }, [messages]);
 
-  // Add welcome message on component mount
   useEffect(() => {
-    const welcomeMessage: Message = {
-      id: 'welcome',
-      role: 'assistant',
-      content: "Hello! I'm Coach C, your AI fitness and nutrition coach based on The Fit Bear philosophy. I'm here to help you achieve your health goals with sustainable, enjoyable approaches to fitness and nutrition. How can I help you today?",
-      timestamp: new Date()
-    };
-    setMessages([welcomeMessage]);
-  }, []);
-
-  const handleSendMessage = async (messageText: string) => {
-    if (!messageText.trim()) return;
+    loadChatHistory();
+    setupSpeechRecognition();
     
-    if (authStatus !== 'authenticated') {
+    return () => {
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+      }
+      if (ttsAbortRef.current) {
+        ttsAbortRef.current.abort();
+      }
+      if (ttsObjectUrlRef.current) {
+        URL.revokeObjectURL(ttsObjectUrlRef.current);
+      }
+    };
+  }, [userId]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const loadChatHistory = async () => {
+    if (!userId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('chat_logs')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true })
+        .limit(50);
+
+      if (error) throw error;
+
+      const formattedMessages: Message[] = data.map(log => ({
+        id: log.id,
+        content: log.content,
+        role: log.role as 'user' | 'assistant',
+        timestamp: new Date(log.created_at)
+      }));
+
+      setMessages(formattedMessages);
+    } catch (error) {
+      console.error('Error loading chat history:', error);
+    }
+  };
+
+  const setupSpeechRecognition = () => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+      recognitionRef.current.lang = 'en-US';
+
+      recognitionRef.current.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        setInput(transcript);
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onerror = () => {
+        setIsListening(false);
+        toast({
+          title: "Voice recognition error",
+          description: "Please try again or type your message",
+          variant: "destructive",
+        });
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+    }
+  };
+
+  const toggleListening = () => {
+    if (!recognitionRef.current) {
       toast({
-        title: "Authentication Required",
-        description: "Please sign in to chat with Coach C",
+        title: "Voice recognition not supported",
+        description: "Please type your message instead",
         variant: "destructive",
       });
       return;
     }
 
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    } else {
+      recognitionRef.current.start();
+      setIsListening(true);
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!input.trim() || isLoading) return;
+
     const userMessage: Message = {
       id: Date.now().toString(),
+      content: input.trim(),
       role: 'user',
-      content: messageText,
       timestamp: new Date()
     };
 
     setMessages(prev => [...prev, userMessage]);
-    setInputValue("");
+    setInput("");
     setIsLoading(true);
 
-    let retryCount = 0;
-    const maxRetries = 1;
-    
-    while (retryCount <= maxRetries) {
-      try {
-        const { data, error } = await supabase.functions.invoke('coach-chat', {
-          body: {
-            message: messageText,
-            userId: userId
-          }
-        });
-
-        if (error) {
-          if (error.message.includes('429') && retryCount < maxRetries) {
-            retryCount++;
-            await new Promise(resolve => setTimeout(resolve, 2000 * retryCount));
-            continue;
-          }
-          throw error;
+    try {
+      const { data, error } = await supabase.functions.invoke('coach-chat', {
+        body: {
+          message: userMessage.content,
+          userId: userId
         }
+      });
 
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: data.text || data.reply,
-          timestamp: new Date()
-        };
+      if (error) throw error;
 
-        setMessages(prev => [...prev, assistantMessage]);
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: data.reply,
+        role: 'assistant',
+        timestamp: new Date()
+      };
 
-        // Update diagnostics
-        setLastDiagnostics({
-          request_id: data.message_id,
-          endpoint: '/coach-chat',
-          status: 200,
-          latency_ms: data.latency_ms,
-          tokens_in: data.tokens_in,
-          tokens_out: data.tokens_out,
-          retry_count: retryCount,
-          model: data.model
-        });
+      setMessages(prev => [...prev, assistantMessage]);
 
-        // Auto-speak if enabled
-        if (autoSpeak) {
-          await playAudio(data.text || data.reply);
-        }
-
-        break;
-
-      } catch (error: any) {
-        console.error('Error sending message:', error);
-        
-        if (retryCount < maxRetries) {
-          retryCount++;
-          await new Promise(resolve => setTimeout(resolve, 2000 * retryCount));
-          continue;
-        }
-
-        // Update diagnostics with error
-        setLastDiagnostics({
-          endpoint: '/coach-chat',
-          status: 500,
-          retry_count: retryCount,
-          error_class: error.message?.includes('API key') ? 'Auth' :
-                      error.message?.includes('429') ? 'RateLimit' :
-                      error.message?.includes('network') || error.message?.includes('fetch') ? 'Network' :
-                      error.message?.includes('required') ? 'DataContract' : 'Logic',
-          error_cause: error.message?.split('\n')[0] || 'Unknown error'
-        });
-
-        toast({
-          title: "Error",
-          description: "Failed to send message. Please try again.",
-          variant: "destructive",
-        });
-        break;
+      if (autoSpeak && data.reply) {
+        await playAudio(data.reply);
       }
+
+      toast({
+        title: "Message sent",
+        description: "Coach C has responded to your message",
+      });
+
+    } catch (error: any) {
+      console.error('Error sending message:', error);
+      
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+          
+          const { data, error: retryError } = await supabase.functions.invoke('coach-chat', {
+            body: {
+              message: userMessage.content,
+              userId: userId
+            }
+          });
+
+          if (retryError) throw retryError;
+
+          const assistantMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: data.reply,
+            role: 'assistant', 
+            timestamp: new Date()
+          };
+
+          setMessages(prev => [...prev, assistantMessage]);
+
+          if (autoSpeak && data.reply) {
+            await playAudio(data.reply);
+          }
+          
+          break;
+        } catch (retryError) {
+          if (attempt === 2) {
+            setMessages(prev => [...prev, {
+              id: (Date.now() + 1).toString(),
+              content: "I'm having trouble connecting right now. Please try again in a moment.",
+              role: 'assistant',
+              timestamp: new Date()
+            }]);
+          }
+        }
+      }
+
+      toast({
+        title: "Error",
+        description: "Failed to send message. Please try again.",
+        variant: "destructive",
+      });
     }
 
     setIsLoading(false);
   };
 
   const playAudio = async (text: string) => {
-    // Helper: strip markdown/HTML/SSML from text
     const sanitizeForTTS = (t: string) =>
       t
         .replace(/```[\s\S]*?```/g, '')
@@ -227,7 +245,6 @@ export function CoachChat({ userId }: CoachChatProps) {
     const start = performance.now();
     const clean = sanitizeForTTS(text);
 
-    // Stop current audio/stream if any
     if (ttsAbortRef.current) {
       ttsAbortRef.current.abort();
       ttsAbortRef.current = null;
@@ -237,7 +254,6 @@ export function CoachChat({ userId }: CoachChatProps) {
       currentAudioRef.current = null;
     }
 
-    // Try low-latency streaming first via direct fetch
     try {
       setIsPlaying(true);
       ttsBytesRef.current = 0;
@@ -251,466 +267,247 @@ export function CoachChat({ userId }: CoachChatProps) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'apikey': SUPABASE_ANON_KEY,
-          ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+          'Authorization': `Bearer ${session?.access_token || SUPABASE_ANON_KEY}`,
         },
-        body: JSON.stringify({ text: clean, voice: 'aura-2-hermes-en' }),
+        body: JSON.stringify({ 
+          text: clean,
+          voice: 'aura-2-hermes-en' 
+        }),
         signal: ctrl.signal,
       });
 
-      if (!res.ok || !res.body || !res.headers.get('Content-Type')?.includes('audio/mpeg')) {
-        throw new Error(`Streaming TTS unavailable (${res.status})`);
-      }
+      if (res.ok) {
+        const blob = await res.blob();
+        const audioUrl = URL.createObjectURL(blob);
+        const audio = new Audio(audioUrl);
+        currentAudioRef.current = audio;
 
-      // Stream into MediaSource for instant playback
-      const mediaSource = new MediaSource();
-      const audioEl = new Audio();
-      currentAudioRef.current = audioEl;
-
-      const objectUrl = URL.createObjectURL(mediaSource);
-      ttsObjectUrlRef.current = objectUrl;
-      audioEl.src = objectUrl;
-
-      let sourceBuffer: SourceBuffer | null = null;
-      let firstAppend = true;
-      const queue: Uint8Array[] = [];
-
-      mediaSource.addEventListener('sourceopen', async () => {
-        try {
-          sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
-        } catch (e) {
-          // Fallback if SourceBuffer not supported
-          throw e;
-        }
-
-        const reader = res.body!.getReader();
-        const pump = async () => {
-          const { done, value } = await reader.read();
-          if (done) {
-            if (!mediaSource.readyState.includes('ended')) {
-              mediaSource.endOfStream();
-            }
-            return;
-          }
-
-          if (value) {
-            ttsBytesRef.current += value.byteLength;
-            const chunk = new Uint8Array(value);
-            if (sourceBuffer!.updating || queue.length) {
-              queue.push(chunk);
-            } else {
-              sourceBuffer!.appendBuffer(chunk);
-            }
-
-            if (firstAppend) {
-              firstAppend = false;
-              const latency = Math.round(performance.now() - start);
-              setLastDiagnostics(prev => ({ ...prev, tts_status: 'streaming', tts_latency_ms: latency, tts_voice: res.headers.get('X-Voice-Model') || 'aura-2-hermes-en' } as any));
-              // Start playback ASAP
-              audioEl.play().catch(() => {/* ignore */});
-            }
-          }
-
-          return pump();
+        audio.onended = () => {
+          URL.revokeObjectURL(audioUrl);
+          setIsPlaying(false);
+          currentAudioRef.current = null;
         };
 
-        sourceBuffer!.addEventListener('updateend', () => {
-          if (queue.length && sourceBuffer && !sourceBuffer.updating) {
-            sourceBuffer.appendBuffer(queue.shift()!);
-          }
-        });
+        audio.onerror = (e) => {
+          console.error('Audio playback error:', e);
+          setIsPlaying(false);
+          currentAudioRef.current = null;
+        };
 
-        pump().catch(err => {
-          console.error('Streaming pump error:', err);
-        });
-      });
-
-      audioEl.onended = () => {
-        setIsPlaying(false);
-        URL.revokeObjectURL(objectUrl);
-        setLastDiagnostics(prev => ({ ...prev, tts_bytes: ttsBytesRef.current } as any));
-      };
-
-      audioEl.onerror = () => {
-        setIsPlaying(false);
-        URL.revokeObjectURL(objectUrl);
-        setLastDiagnostics(prev => ({ ...prev, tts_status: 'error' } as any));
-        toast({ title: 'Audio Error', description: 'Playback error', variant: 'destructive' });
-      };
-
-      return; // success
-    } catch (err) {
-      console.warn('Streaming TTS failed, falling back to REST:', err);
-      // Continue to REST fallback below
-    }
-
-    // REST fallback (base64)
-    try {
-      setIsPlaying(true);
-      const t0 = performance.now();
-      const { data, error } = await supabase.functions.invoke('deepgram-tts', {
-        body: { text: clean, voice: 'aura-2-hermes-en' }
-      });
-      if (error) throw error;
-
-      if (currentAudioRef.current) {
-        currentAudioRef.current.pause();
-        currentAudioRef.current = null;
+        await audio.play();
+        const end = performance.now();
+        console.log(`🎵 TTS: ${Math.round(end - start)}ms`);
+      } else {
+        throw new Error(`TTS failed: ${res.status}`);
       }
-
-      const audio = new Audio(`data:audio/mpeg;base64,${data.audioContent}`);
-      currentAudioRef.current = audio;
-
-      audio.onplay = () => {
-        const latency = Math.round(performance.now() - t0);
-        setLastDiagnostics(prev => ({ ...prev, tts_status: 'rest', tts_latency_ms: latency, tts_voice: data.voice_used, tts_bytes: data.audioContent?.length || 0 } as any));
-      };
-
-      audio.onended = () => setIsPlaying(false);
-      audio.onerror = () => {
-        setIsPlaying(false);
-        toast({ title: 'Audio Error', description: 'Failed to play audio response', variant: 'destructive' });
-      };
-
-      await audio.play();
-    } catch (error) {
-      console.error('Error playing audio:', error);
+    } catch (error: any) {
+      console.error('TTS error:', error);
       setIsPlaying(false);
-      setLastDiagnostics(prev => ({ ...prev, tts_status: 'error', error_class: 'Network' } as any));
-      toast({ title: 'Audio Error', description: 'Failed to generate audio response', variant: 'destructive' });
+      currentAudioRef.current = null;
+      
+      if (error.name !== 'AbortError') {
+        const end = performance.now();
+        console.log(`❌ TTS failed after ${Math.round(end - start)}ms:`, error.message);
+      }
     }
   };
 
   const stopAudio = () => {
     if (ttsAbortRef.current) {
-      try { ttsAbortRef.current.abort(); } catch {}
+      ttsAbortRef.current.abort();
       ttsAbortRef.current = null;
     }
     if (currentAudioRef.current) {
       currentAudioRef.current.pause();
       currentAudioRef.current = null;
     }
-    if (ttsObjectUrlRef.current) {
-      try { URL.revokeObjectURL(ttsObjectUrlRef.current); } catch {}
-      ttsObjectUrlRef.current = null;
-    }
     setIsPlaying(false);
   };
 
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          sampleRate: 16000,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true
-        } 
-      });
-      
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm'
-      });
-      
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        await processAudio(audioBlob);
-        
-        // Stop all tracks
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorder.start();
-      setIsRecording(true);
-
-    } catch (error) {
-      console.error('Error starting recording:', error);
-      toast({
-        title: "Recording Error",
-        description: "Failed to access microphone",
-        variant: "destructive",
-      });
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
     }
   };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-    }
-  };
-
-  const processAudio = async (audioBlob: Blob) => {
-    try {
-      setIsLoading(true);
-
-      // Convert blob to base64
-      const reader = new FileReader();
-      reader.readAsDataURL(audioBlob);
-      
-      reader.onloadend = async () => {
-        const base64Audio = (reader.result as string).split(',')[1];
-        
-        try {
-          const { data, error } = await supabase.functions.invoke('deepgram-stt', {
-            body: { audio: base64Audio }
-          });
-
-          if (error) throw error;
-
-          // Update STT diagnostics
-          setLastDiagnostics(prev => ({
-            ...prev,
-            stt_language: data.detected_language,
-            stt_confidence: data.confidence
-          }));
-
-          if (data.transcript && data.transcript.trim()) {
-            setInputValue(data.transcript);
-            // Optionally auto-send after STT
-            // await handleSendMessage(data.transcript);
-          } else {
-            toast({
-              title: "No Speech Detected",
-              description: "Please try speaking more clearly",
-              variant: "destructive",
-            });
-          }
-        } catch (error) {
-          console.error('Error processing audio:', error);
-          toast({
-            title: "Transcription Error",
-            description: "Failed to transcribe audio",
-            variant: "destructive",
-          });
-        } finally {
-          setIsLoading(false);
-        }
-      };
-
-    } catch (error) {
-      console.error('Error processing audio:', error);
-      setIsLoading(false);
-    }
-  };
-
-  if (authStatus === 'loading') {
-    return (
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold mb-4">Loading...</h2>
-        </div>
-      </div>
-    );
-  }
-
-  if (authStatus === 'unauthenticated') {
-    return (
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold mb-4">Authentication Required</h2>
-          <p className="text-muted-foreground mb-4">Please sign in to chat with Coach C</p>
-          <Button onClick={() => window.location.href = '/auth'}>
-            Go to Sign In
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="flex-1 flex flex-col p-3 sm:p-6 max-w-4xl mx-auto">
-      {/* Auth Status Chip */}
-      <div className="mb-4 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
-        <Badge variant="outline" className="gap-2 px-3 py-1">
-          <User className="w-3 h-3" />
-          <span className="truncate max-w-[200px]">Signed in as {userEmail}</span>
-        </Badge>
-        
-        {/* Diagnostics Toggle */}
-        <Collapsible open={showDiagnostics} onOpenChange={setShowDiagnostics}>
-          <CollapsibleTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-2">
-              <Activity className="w-3 h-3" />
-              Diagnostics
-              <ChevronDown className="w-3 h-3" />
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="mt-2 p-3 bg-muted rounded-lg text-sm overflow-auto">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <div>Request ID: {lastDiagnostics.request_id || 'N/A'}</div>
-              <div>Endpoint: {lastDiagnostics.endpoint || 'N/A'}</div>
-              <div>Status: {lastDiagnostics.status || 'N/A'}</div>
-              <div>Latency: {lastDiagnostics.latency_ms || 'N/A'}ms</div>
-              <div>Tokens In: {lastDiagnostics.tokens_in || 'N/A'}</div>
-              <div>Tokens Out: {lastDiagnostics.tokens_out || 'N/A'}</div>
-              <div>Model: {lastDiagnostics.model || 'N/A'}</div>
-              <div>Retries: {lastDiagnostics.retry_count || 0}</div>
-              {lastDiagnostics.stt_language && (
-                <div>STT Language: {lastDiagnostics.stt_language}</div>
-              )}
-              {typeof lastDiagnostics.stt_confidence !== 'undefined' && (
-                <div>STT Confidence: {(lastDiagnostics.stt_confidence * 100).toFixed(1)}%</div>
-              )}
-              {lastDiagnostics.tts_voice && (
-                <div>TTS Voice: {lastDiagnostics.tts_voice}</div>
-              )}
-              {lastDiagnostics.tts_status && (
-                <div>TTS Status: {lastDiagnostics.tts_status}</div>
-              )}
-              {typeof lastDiagnostics.tts_latency_ms !== 'undefined' && (
-                <div>TTS Start: {lastDiagnostics.tts_latency_ms}ms</div>
-              )}
-              {typeof lastDiagnostics.tts_bytes !== 'undefined' && (
-                <div>TTS Bytes: {lastDiagnostics.tts_bytes}</div>
-              )}
-              {lastDiagnostics.error_class && (
-                <div className="col-span-1 sm:col-span-2 text-red-600 break-words">
-                  Error: {lastDiagnostics.error_class} - {lastDiagnostics.error_cause}
-                </div>
+    <div className="flex flex-col h-screen max-h-screen bg-background">
+      {/* Header */}
+      <Card className="rounded-none border-b border-l-0 border-r-0 border-t-0">
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-4">
+            <Avatar className="h-12 w-12 md:h-16 md:w-16">
+              <AvatarImage 
+                src="/lovable-uploads/00de3c1c-78fb-4830-8c11-79cdf5a2069d.png" 
+                alt="Coach C" 
+                className="object-cover"
+              />
+              <AvatarFallback>CC</AvatarFallback>
+            </Avatar>
+            <div className="flex-1">
+              <CardTitle className="text-lg md:text-xl">Coach C</CardTitle>
+              <CardDescription className="text-sm md:text-base">
+                Your Personal Health Coach
+              </CardDescription>
+              <div className="flex flex-wrap gap-2 mt-2">
+                <Badge variant="secondary" className="text-xs">Nutrition Expert</Badge>
+                <Badge variant="secondary" className="text-xs">Wellness Guide</Badge>
+                {isPlaying && <Badge variant="outline" className="text-xs">🔊 Speaking</Badge>}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant={autoSpeak ? "default" : "outline"}
+                size="sm"
+                onClick={() => setAutoSpeak(!autoSpeak)}
+                className="hidden md:flex"
+              >
+                {autoSpeak ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+              </Button>
+              {isPlaying && (
+                <Button variant="outline" size="sm" onClick={stopAudio}>
+                  Stop
+                </Button>
               )}
             </div>
-          </CollapsibleContent>
-        </Collapsible>
-      </div>
+          </div>
+        </CardHeader>
+      </Card>
 
-      {/* Coach Header */}
-      <div className="flex items-center gap-3 mb-4 sm:mb-6">
-        <Avatar className="w-16 h-16 sm:w-20 sm:h-20">
-          <AvatarImage src="/lovable-uploads/00de3c1c-78fb-4830-8c11-79cdf5a2069d.png" alt="Coach C avatar" />
-          <AvatarFallback className="bg-gradient-primary text-primary-foreground font-bold text-lg">
-            C
-          </AvatarFallback>
-        </Avatar>
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold gradient-text">Coach C</h1>
-          <p className="text-muted-foreground text-sm sm:text-base">Your AI Fitness & Nutrition Coach</p>
-        </div>
-      </div>
-
-      {/* Chat Container */}
-      <div className="flex-1 border rounded-lg bg-card overflow-hidden flex flex-col">
-        <ScrollArea className="flex-1 p-3 sm:p-4" ref={scrollAreaRef}>
-          <div className="space-y-4">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex gap-2 sm:gap-3 ${
-                  message.role === 'user' ? 'justify-end' : 'justify-start'
-                }`}
-              >
-                {message.role === 'assistant' && (
-                  <Avatar className="w-6 h-6 sm:w-8 sm:h-8 flex-shrink-0">
-                     <AvatarImage src="/lovable-uploads/00de3c1c-78fb-4830-8c11-79cdf5a2069d.png" alt="Coach C" />
-                    <AvatarFallback className="bg-gradient-primary text-primary-foreground text-xs sm:text-sm">
-                      C
-                    </AvatarFallback>
-                  </Avatar>
-                )}
-                <div
-                  className={`max-w-[85%] sm:max-w-[80%] p-3 rounded-lg ${
-                    message.role === 'user'
-                      ? 'bg-primary text-primary-foreground ml-auto'
-                      : 'bg-muted'
-                  }`}
-                >
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
-                  <p className="text-xs opacity-70 mt-1">
-                    {message.timestamp.toLocaleTimeString()}
+      {/* Messages */}
+      <ScrollArea className="flex-1 p-4">
+        <div className="space-y-4 max-w-4xl mx-auto">
+          {messages.length === 0 && (
+            <Card className="border-dashed">
+              <CardContent className="pt-6">
+                <div className="text-center text-muted-foreground">
+                  <MessageCircle className="mx-auto h-12 w-12 mb-4 opacity-50" />
+                  <h3 className="text-lg font-medium mb-2">Start a conversation with Coach C</h3>
+                  <p className="text-sm">
+                    Ask about nutrition, meal planning, health goals, or anything wellness-related.
                   </p>
                 </div>
-              </div>
-            ))}
-            {isLoading && (
-              <div className="flex gap-2 sm:gap-3 justify-start">
-                <Avatar className="w-6 h-6 sm:w-8 sm:h-8 flex-shrink-0">
-                  <AvatarImage src="/lovable-uploads/00de3c1c-78fb-4830-8c11-79cdf5a2069d.png" alt="Coach C" />
-                  <AvatarFallback className="bg-gradient-primary text-primary-foreground text-xs sm:text-sm">
-                    C
-                  </AvatarFallback>
+              </CardContent>
+            </Card>
+          )}
+          
+          {messages.map((message) => (
+            <div
+              key={message.id}
+              className={`flex gap-3 ${
+                message.role === 'user' ? 'justify-end' : 'justify-start'
+              }`}
+            >
+              {message.role === 'assistant' && (
+                <Avatar className="h-8 w-8 md:h-10 md:w-10 flex-shrink-0">
+                  <AvatarImage 
+                    src="/lovable-uploads/00de3c1c-78fb-4830-8c11-79cdf5a2069d.png" 
+                    alt="Coach C" 
+                    className="object-cover"
+                  />
+                  <AvatarFallback>CC</AvatarFallback>
                 </Avatar>
-                <div className="bg-muted p-3 rounded-lg">
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-primary rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                    <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
-                  </div>
+              )}
+              <div
+                className={`max-w-[85%] md:max-w-[70%] rounded-lg p-3 md:p-4 ${
+                  message.role === 'user'
+                    ? 'bg-primary text-primary-foreground ml-auto'
+                    : 'bg-muted'
+                }`}
+              >
+                <p className="text-sm md:text-base whitespace-pre-wrap leading-relaxed">
+                  {message.content}
+                </p>
+                <p className="text-xs opacity-70 mt-2">
+                  {message.timestamp.toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}
+                </p>
+              </div>
+            </div>
+          ))}
+          
+          {isLoading && (
+            <div className="flex gap-3 justify-start">
+              <Avatar className="h-8 w-8 md:h-10 md:w-10 flex-shrink-0">
+                <AvatarImage 
+                  src="/lovable-uploads/00de3c1c-78fb-4830-8c11-79cdf5a2069d.png" 
+                  alt="Coach C" 
+                  className="object-cover"
+                />
+                <AvatarFallback>CC</AvatarFallback>
+              </Avatar>
+              <div className="bg-muted rounded-lg p-3 md:p-4">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm text-muted-foreground">Coach C is thinking...</span>
                 </div>
               </div>
-            )}
-          </div>
-        </ScrollArea>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+      </ScrollArea>
 
-        {/* Input Area */}
-        <div className="border-t p-3 sm:p-4 bg-card">
-          {/* Controls */}
-          <div className="flex flex-wrap items-center gap-2 mb-3">
+      <Separator />
+
+      {/* Input */}
+      <div className="p-4 bg-background">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex gap-2 items-end">
+            <div className="flex-1 relative">
+              <Input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Ask Coach C about nutrition, health goals, meal planning..."
+                className="pr-12 py-3 md:py-4 text-sm md:text-base"
+                disabled={isLoading}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 md:h-10 md:w-10"
+                onClick={toggleListening}
+                disabled={isLoading}
+              >
+                {isListening ? (
+                  <MicOff className="h-4 w-4 text-red-500" />
+                ) : (
+                  <Mic className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
             <Button
-              variant={autoSpeak ? "default" : "outline"}
+              onClick={sendMessage}
+              disabled={!input.trim() || isLoading}
+              className="h-12 px-4 md:px-6"
+            >
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+          <div className="flex justify-between items-center mt-2 text-xs text-muted-foreground">
+            <span>
+              {isListening ? 'Listening...' : 'Press Enter to send or click mic to speak'}
+            </span>
+            <Button
+              variant="ghost"
               size="sm"
               onClick={() => setAutoSpeak(!autoSpeak)}
-              className="gap-2 text-xs sm:text-sm touch-manipulation"
+              className="md:hidden"
             >
-              {autoSpeak ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-              <span className="hidden sm:inline">Auto-speak {autoSpeak ? 'ON' : 'OFF'}</span>
-              <span className="sm:hidden">{autoSpeak ? 'ON' : 'OFF'}</span>
-            </Button>
-            
-            {isPlaying && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={stopAudio}
-                className="gap-2 text-xs sm:text-sm touch-manipulation"
-              >
-                <Square className="w-4 h-4" />
-                <span className="hidden sm:inline">Stop Audio</span>
-                <span className="sm:hidden">Stop</span>
-              </Button>
-            )}
-          </div>
-
-          {/* Input */}
-          <div className="flex gap-2">
-            <Input
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              placeholder="Type your message or use the mic..."
-              onKeyPress={(e) => e.key === 'Enter' && handleSendMessage(inputValue)}
-              disabled={isLoading || isRecording}
-              className="flex-1 min-w-0"
-            />
-            
-            <Button
-              variant={isRecording ? "destructive" : "outline"}
-              size="icon"
-              onClick={isRecording ? stopRecording : startRecording}
-              disabled={isLoading}
-              className="flex-shrink-0 touch-manipulation"
-            >
-              {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-            </Button>
-            
-            <Button
-              onClick={() => handleSendMessage(inputValue)}
-              disabled={!inputValue.trim() || isLoading || isRecording}
-              className="flex-shrink-0 touch-manipulation"
-            >
-              <span className="hidden sm:inline">Send</span>
-              <span className="sm:hidden">→</span>
+              {autoSpeak ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
             </Button>
           </div>
         </div>
       </div>
     </div>
   );
-}
+};
