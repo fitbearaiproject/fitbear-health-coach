@@ -85,7 +85,7 @@ export function Dashboard() {
         carbs: acc.carbs + (meal.carbs_g || 0),
         fat: acc.fat + (meal.fat_g || 0),
         fiber: acc.fiber + (meal.fiber_g || 0),
-        sugar: acc.sugar + (meal.sugar_g || 0),
+        sugar: acc.sugar + ((meal as any).sugar_g || 0),
       }), { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0 }) || { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0 };
 
       const totalWater = hydration?.reduce((sum, log) => sum + log.cups, 0) || 0;

@@ -225,6 +225,7 @@ export type Database = {
           protein_g: number | null
           quantity: number | null
           source: string
+          sugar_g: number | null
           unit: string | null
           user_id: string
         }
@@ -244,6 +245,7 @@ export type Database = {
           protein_g?: number | null
           quantity?: number | null
           source: string
+          sugar_g?: number | null
           unit?: string | null
           user_id: string
         }
@@ -263,6 +265,7 @@ export type Database = {
           protein_g?: number | null
           quantity?: number | null
           source?: string
+          sugar_g?: number | null
           unit?: string | null
           user_id?: string
         }
