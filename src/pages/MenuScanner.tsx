@@ -66,6 +66,7 @@ export default function MenuScanner() {
   const [selectedDishes, setSelectedDishes] = useState<{ [key: string]: SelectedDish }>({});
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -93,16 +94,21 @@ export default function MenuScanner() {
   const handleImageSelect = (files: FileList) => {
     const fileArray = Array.from(files);
     
-    // Limit to 5 images
+    // Limit to 5 images/files
     if (fileArray.length > 5) {
-      setError('Maximum 5 images allowed');
+      setError('Maximum 5 images/files allowed');
       return;
     }
 
-    // Check file sizes
-    const oversizedFiles = fileArray.filter(file => file.size > 10 * 1024 * 1024);
+    // Check file sizes (10MB for images, 50MB for PDFs)
+    const oversizedFiles = fileArray.filter(file => {
+      const isPdf = file.type === 'application/pdf';
+      const maxSize = isPdf ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+      return file.size > maxSize;
+    });
+    
     if (oversizedFiles.length > 0) {
-      setError('All images must be less than 10MB');
+      setError('Images must be less than 10MB, PDFs less than 50MB');
       return;
     }
 
@@ -121,11 +127,27 @@ export default function MenuScanner() {
           setImagePreviews([...previews]);
         }
       };
-      reader.readAsDataURL(file);
+      
+      if (file.type === 'application/pdf') {
+        // For PDFs, show a placeholder preview
+        previews[index] = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJMMTMuMDkgOC4yNkwyMCA5TDEzLjA5IDE1Ljc0TDEyIDIyTDEwLjkxIDE1Ljc0TDQgOUwxMC45MSA4LjI2TDEyIDJaIiBmaWxsPSIjZmY0NDQ0Ii8+Cjx0ZXh0IHg9IjEyIiB5PSIxNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSI4IiBmaWxsPSJ3aGl0ZSI+UERGPC90ZXh0Pgo8L3N2Zz4K';
+        if (previews.length === fileArray.length) {
+          setImagePreviews([...previews]);
+        }
+      } else {
+        reader.readAsDataURL(file);
+      }
     });
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      handleImageSelect(files);
+    }
+  };
+
+  const handleCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
       handleImageSelect(files);
@@ -454,16 +476,33 @@ export default function MenuScanner() {
               <div className="flex flex-col sm:flex-row gap-4">
                 <Button
                   variant="outline"
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="flex items-center gap-2"
+                >
+                  <Camera className="h-4 w-4" />
+                  Take Photo
+                </Button>
+                <Button
+                  variant="outline"
                   onClick={() => fileInputRef.current?.click()}
                   className="flex items-center gap-2"
                 >
                   <Upload className="h-4 w-4" />
-                  Choose Images (Max 5)
+                  Choose Files (Max 5)
                 </Button>
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  multiple
+                  onChange={handleCameraCapture}
+                  className="hidden"
+                />
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/*,application/pdf"
                   multiple
                   onChange={handleFileUpload}
                   className="hidden"
@@ -472,38 +511,64 @@ export default function MenuScanner() {
             ) : (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                  {imagePreviews.map((preview, index) => (
-                    <div key={index} className="relative">
-                      <img
-                        src={preview}
-                        alt={`Menu preview ${index + 1}`}
-                        className="w-full h-32 object-cover rounded-lg border"
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => removeImage(index)}
-                        className="absolute top-1 right-1 h-6 w-6 p-0"
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                      <Badge 
-                        variant="secondary" 
-                        className="absolute bottom-1 left-1 text-xs"
-                      >
-                        {index + 1}
-                      </Badge>
-                    </div>
-                  ))}
+                  {imagePreviews.map((preview, index) => {
+                    const file = selectedImages[index];
+                    const isPdf = file?.type === 'application/pdf';
+                    
+                    return (
+                      <div key={index} className="relative">
+                        {isPdf ? (
+                          <div className="w-full h-32 bg-gray-100 rounded-lg border flex items-center justify-center">
+                            <div className="text-center">
+                              <div className="text-red-500 mb-1">📄</div>
+                              <div className="text-xs text-gray-600">{file.name}</div>
+                            </div>
+                          </div>
+                        ) : (
+                          <img
+                            src={preview}
+                            alt={`Menu preview ${index + 1}`}
+                            className="w-full h-32 object-cover rounded-lg border"
+                          />
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => removeImage(index)}
+                          className="absolute top-1 right-1 h-6 w-6 p-0"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                        <Badge 
+                          variant="secondary" 
+                          className="absolute bottom-1 left-1 text-xs"
+                        >
+                          {index + 1}
+                        </Badge>
+                      </div>
+                    );
+                  })}
                   {selectedImages.length < 5 && (
-                    <Button
-                      variant="outline"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="h-32 border-dashed flex flex-col items-center gap-2"
-                    >
-                      <Upload className="h-6 w-6" />
-                      <span className="text-sm">Add More</span>
-                    </Button>
+                    <div className="h-32 border-dashed border-2 rounded-lg flex flex-col gap-2 p-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => cameraInputRef.current?.click()}
+                        className="flex items-center justify-center gap-2 flex-1"
+                      >
+                        <Camera className="h-4 w-4" />
+                        Take Photo
+                      </Button>
+                      <Button
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex items-center justify-center gap-2 flex-1"
+                      >
+                        <Upload className="h-4 w-4" />
+                        Choose File
+                      </Button>
+                    </div>
                   )}
                 </div>
                 <div className="flex items-center justify-between">

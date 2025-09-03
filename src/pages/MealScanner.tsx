@@ -79,6 +79,7 @@ export default function MealScanner() {
   const [selectedDishes, setSelectedDishes] = useState<{ [key: string]: SelectedDish }>({});
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -145,6 +146,13 @@ export default function MealScanner() {
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleImageSelect(file);
+    }
+  };
+
+  const handleCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       handleImageSelect(file);
@@ -366,17 +374,32 @@ export default function MealScanner() {
                   <div className="flex flex-col sm:flex-row gap-4">
                     <Button
                       variant="outline"
-                      onClick={() => fileInputRef.current?.click()}
+                      onClick={() => cameraInputRef.current?.click()}
                       className="flex items-center gap-2"
                     >
                       <Camera className="h-4 w-4" />
-                      Take Photo / Upload
+                      Take Photo
                     </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center gap-2"
+                    >
+                      <Upload className="h-4 w-4" />
+                      Choose Image
+                    </Button>
+                    <input
+                      ref={cameraInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleCameraCapture}
+                      className="hidden"
+                    />
                     <input
                       ref={fileInputRef}
                       type="file"
                       accept="image/*"
-                      capture="environment"
                       onChange={handleFileUpload}
                       className="hidden"
                     />
