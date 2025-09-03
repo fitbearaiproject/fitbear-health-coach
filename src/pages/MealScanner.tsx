@@ -24,6 +24,7 @@ interface DishItem {
   carbs_g: number;
   fat_g: number;
   fiber_g: number;
+  sugar_g: number;
   description: string;
   coach_note: string;
   flags: string[];
@@ -37,6 +38,7 @@ interface MealAnalysis {
     carbs_g: number;
     fat_g: number;
     fiber_g: number;
+    sugar_g: number;
   };
   overall_note?: string;
   parsing_error?: boolean;
@@ -149,6 +151,25 @@ export default function MealScanner() {
     const file = e.target.files?.[0];
     if (file) {
       handleImageSelect(file);
+    }
+  };
+
+  const openCamera = async () => {
+    try {
+      // Try to access camera first
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment' } 
+      });
+      
+      // Stop the stream immediately as we just needed to test access
+      stream.getTracks().forEach(track => track.stop());
+      
+      // If camera access successful, trigger the camera input
+      cameraInputRef.current?.click();
+    } catch (error) {
+      console.warn('Camera access failed, falling back to file picker:', error);
+      // Fallback to file picker if camera fails
+      fileInputRef.current?.click();
     }
   };
 
@@ -304,6 +325,7 @@ export default function MealScanner() {
         const scaledCarbs = Math.round(dish.carbs_g * quantity * 10) / 10;
         const scaledFat = Math.round(dish.fat_g * quantity * 10) / 10;
         const scaledFiber = Math.round(dish.fiber_g * quantity * 10) / 10;
+        const scaledSugar = Math.round(dish.sugar_g * quantity * 10) / 10;
 
         const { error } = await supabase
           .from('meal_logs')
@@ -317,6 +339,7 @@ export default function MealScanner() {
             carbs_g: scaledCarbs,
             fat_g: scaledFat,
             fiber_g: scaledFiber,
+            sugar_g: scaledSugar,
             notes: `${dish.flags.join(', ')} - ${dish.coach_note}`,
             source: 'photo',
             meal_time: mealTime,
@@ -355,6 +378,9 @@ export default function MealScanner() {
         <p className="text-muted-foreground">
           Snap photos of your meals for automatic nutrition tracking and logging.
         </p>
+        <p className="text-xs text-muted-foreground mt-2 italic">
+          Using Bio-Psycho-Social framework: balancing your nutrition needs with mindful habits that fit your lifestyle.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -374,7 +400,7 @@ export default function MealScanner() {
                   <div className="flex flex-col sm:flex-row gap-4">
                     <Button
                       variant="outline"
-                      onClick={() => cameraInputRef.current?.click()}
+                      onClick={openCamera}
                       className="flex items-center gap-2"
                     >
                       <Camera className="h-4 w-4" />
@@ -501,7 +527,8 @@ export default function MealScanner() {
                   Protein: {analysis.analysis.summary.protein_g}g | 
                   Carbs: {analysis.analysis.summary.carbs_g}g | 
                   Fat: {analysis.analysis.summary.fat_g}g | 
-                  Fiber: {analysis.analysis.summary.fiber_g}g
+                  Fiber: {analysis.analysis.summary.fiber_g}g | 
+                  Sugar: {analysis.analysis.summary.sugar_g}g
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -574,7 +601,7 @@ export default function MealScanner() {
                               )}
 
                               <p className="text-sm text-muted-foreground">Portion: {dish.portion}</p>
-                              <div className="grid grid-cols-4 gap-4 text-xs">
+                              <div className="grid grid-cols-5 gap-2 text-xs">
                                 <div>
                                   <span className="text-muted-foreground">Protein:</span>
                                   <span className="ml-1 font-medium">{dish.protein_g}g</span>
@@ -590,6 +617,10 @@ export default function MealScanner() {
                                 <div>
                                   <span className="text-muted-foreground">Fiber:</span>
                                   <span className="ml-1 font-medium">{dish.fiber_g}g</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Sugar:</span>
+                                  <span className="ml-1 font-medium">{dish.sugar_g}g</span>
                                 </div>
                               </div>
                               {dish.flags.length > 0 && (

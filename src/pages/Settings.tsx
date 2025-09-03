@@ -281,6 +281,9 @@ const Settings = () => {
           <p className="text-muted-foreground mt-2">
             Manage your nutrition targets and account preferences
           </p>
+          <p className="text-xs text-muted-foreground mt-2 italic">
+            Fit Bear uses Bio-Psycho-Social framework: we'll use your biological metrics + lifestyle patterns + habit-friendly nudges to personalize your targets.
+          </p>
         </div>
 
         {/* Nutrition Targets */}

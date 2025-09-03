@@ -23,6 +23,7 @@ interface DishItem {
   carbs_g: number;
   fat_g: number;
   fiber_g: number;
+  sugar_g: number;
   description: string;
   coach_note: string;
   tags: string[];
@@ -144,6 +145,25 @@ export default function MenuScanner() {
     const files = e.target.files;
     if (files && files.length > 0) {
       handleImageSelect(files);
+    }
+  };
+
+  const openCamera = async () => {
+    try {
+      // Try to access camera first
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment' } 
+      });
+      
+      // Stop the stream immediately as we just needed to test access
+      stream.getTracks().forEach(track => track.stop());
+      
+      // If camera access successful, trigger the camera input
+      cameraInputRef.current?.click();
+    } catch (error) {
+      console.warn('Camera access failed, falling back to file picker:', error);
+      // Fallback to file picker if camera fails
+      fileInputRef.current?.click();
     }
   };
 
@@ -315,6 +335,7 @@ export default function MenuScanner() {
         const scaledCarbs = Math.round(dish.carbs_g * quantity * 10) / 10;
         const scaledFat = Math.round(dish.fat_g * quantity * 10) / 10;
         const scaledFiber = Math.round(dish.fiber_g * quantity * 10) / 10;
+        const scaledSugar = Math.round(dish.sugar_g * quantity * 10) / 10;
 
         const { error } = await supabase
           .from('meal_logs')
@@ -328,6 +349,7 @@ export default function MenuScanner() {
             carbs_g: scaledCarbs,
             fat_g: scaledFat,
             fiber_g: scaledFiber,
+            sugar_g: scaledSugar,
             notes: `${category} - ${dish.coach_note}`,
             source: 'menu',
             meal_time: mealTime
@@ -438,6 +460,10 @@ export default function MenuScanner() {
               <p className="text-sm text-muted-foreground">Fiber</p>
               <p className="font-medium">{dish.fiber_g}g</p>
             </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Sugar</p>
+              <p className="font-medium">{dish.sugar_g}g</p>
+            </div>
           </div>
           {dish.tags.length > 0 && (
             <div className="flex flex-wrap gap-1">
@@ -460,6 +486,9 @@ export default function MenuScanner() {
         <p className="text-muted-foreground">
           Upload a restaurant menu to get personalized recommendations based on your health profile.
         </p>
+        <p className="text-xs text-muted-foreground mt-2 italic">
+          Bio-Psycho-Social approach: Consider your body's needs, mind's preferences, and social eating context.
+        </p>
       </div>
 
       {/* Upload Section */}
@@ -467,7 +496,7 @@ export default function MenuScanner() {
         <CardHeader>
           <CardTitle>Upload Menu Image</CardTitle>
           <CardDescription>
-            Take a photo or upload an image of the restaurant menu
+            Take a photo or upload an image or pdf of the restaurant menu
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -476,7 +505,7 @@ export default function MenuScanner() {
               <div className="flex flex-col sm:flex-row gap-4">
                 <Button
                   variant="outline"
-                  onClick={() => cameraInputRef.current?.click()}
+                  onClick={openCamera}
                   className="flex items-center gap-2"
                 >
                   <Camera className="h-4 w-4" />

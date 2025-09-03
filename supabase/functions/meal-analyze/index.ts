@@ -35,6 +35,7 @@ interface MealDish {
   carbs_g: number;
   fat_g: number;
   fiber_g: number;
+  sugar_g: number;
   description: string;
   coach_note: string;
   flags: string[];
@@ -48,6 +49,7 @@ interface MealAnalyzeResponse {
     carbs_g: number;
     fat_g: number;
     fiber_g: number;
+    sugar_g: number;
   };
   overall_note?: string;
 }
@@ -240,7 +242,7 @@ Carbs: ${targets.carbs_g || 'Not set'}g
 Fat: ${targets.fat_g || 'Not set'}g
 Fiber: ${targets.fiber_g || 'Not set'}g`;
 
-const systemPrompt = `You are the Meal Scanner powered by Coach C — a nutrition assistant with deep knowledge of Indian, South Asian, and global homemade food. Your job is to accurately recognize dishes from an image (inline_data), estimate portions and macros, and favor contextual nuance over blind certainty.
+const systemPrompt = `You are the Meal Scanner powered by Coach C — guiding through a Bio-Psycho-Social lens, combining body nutrition needs, mindset awareness, and lifestyle-friendly habits. You have deep knowledge of Indian, South Asian, and global homemade food. Your job is to accurately recognize dishes from an image (inline_data), estimate portions and macros, and favor contextual nuance over blind certainty.
 
 **Low-Confidence Clarification Logic:**
 - If image quality is poor, lighting inadequate, or dishes are unclear/ambiguous, set confidence < 0.7
@@ -276,6 +278,7 @@ Output format (strict): Return ONLY valid JSON with this schema (adapted to the 
       "carbs_g": number,
       "fat_g": number,
       "fiber_g": number|null,
+      "sugar_g": number|null,
       "description": "string",
       "coach_note": "string (include error margin ±10–15% if relevant)",
       "flags": ["string", ...]
@@ -286,7 +289,8 @@ Output format (strict): Return ONLY valid JSON with this schema (adapted to the 
     "protein_g": number,
     "carbs_g": number,
     "fat_g": number,
-    "fiber_g": number|null
+    "fiber_g": number|null,
+    "sugar_g": number|null
   },
   "overall_note": "string",
   "model_confidence": number

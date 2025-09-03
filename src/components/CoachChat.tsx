@@ -259,37 +259,34 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
     ttsAbortRef.current = ctrl;
 
     const clean = sanitizeForTTS(text);
-    // Split into sentence-sized chunks (to start playback ASAP)
-    const sentences = (clean.match(/[^.!?]+[.!?]*/g) || [clean])
-      .map(s => s.trim())
-      .filter(Boolean);
-
+    
+    // Use entire text block for continuous playback
     let cancelled = false;
     setIsPlaying(true);
 
-    const playNext = async (idx: number) => {
-      if (cancelled || idx >= sentences.length) {
+    const playEntireText = async () => {
+      if (cancelled) {
         setIsPlaying(false);
         currentAudioRef.current = null;
         return;
       }
 
-      const segment = sentences[idx];
-      const url = `${SUPABASE_URL}/functions/v1/deepgram-tts-stream?voice=aura-2-hermes-en&text=${encodeURIComponent(segment)}`;
+      const url = `${SUPABASE_URL}/functions/v1/deepgram-tts-stream?voice=aura-2-hermes-en&text=${encodeURIComponent(clean)}`;
       const audio = new Audio(url);
       audio.preload = 'auto';
 
       audio.onended = () => {
-        if (!cancelled) playNext(idx + 1);
+        setIsPlaying(false);
+        currentAudioRef.current = null;
       };
 
       audio.onerror = async () => {
-        // Fallback to buffered POST if streaming fails for this segment
+        // Fallback to buffered POST if streaming fails
         try {
           const res = await fetch(`${SUPABASE_URL}/functions/v1/deepgram-tts-stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: segment, voice: 'aura-2-hermes-en' }),
+            body: JSON.stringify({ text: clean, voice: 'aura-2-hermes-en' }),
             signal: ctrl.signal,
           });
           if (res.ok) {
@@ -298,14 +295,17 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
             audio.src = objectUrl;
             audio.onended = () => {
               URL.revokeObjectURL(objectUrl);
-              if (!cancelled) playNext(idx + 1);
+              setIsPlaying(false);
+              currentAudioRef.current = null;
             };
             try { await audio.play(); } catch {}
           } else {
-            if (!cancelled) playNext(idx + 1);
+            setIsPlaying(false);
+            currentAudioRef.current = null;
           }
         } catch (_) {
-          if (!cancelled) playNext(idx + 1);
+          setIsPlaying(false);
+          currentAudioRef.current = null;
         }
       };
 
@@ -314,7 +314,7 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
     };
 
     // Begin playback
-    playNext(0);
+    playEntireText();
 
     // Handle cancel/abort
     ctrl.signal.addEventListener('abort', () => {

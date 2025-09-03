@@ -31,6 +31,10 @@ export function Dashboard() {
     targetCarbs: 200,
     fat: 0,
     targetFat: 67,
+    fiber: 0,
+    targetFiber: 25,
+    sugar: 0,
+    targetSugar: 25,
     water: 0,
     targetWater: 8,
   });
@@ -56,7 +60,7 @@ export function Dashboard() {
       // Load today's meal totals
       const { data: meals } = await supabase
         .from('meal_logs')
-        .select('kcal, protein_g, carbs_g, fat_g')
+        .select('kcal, protein_g, carbs_g, fat_g, fiber_g, sugar_g')
         .eq('user_id', user.id)
         .gte('meal_time', from.toISOString())
         .lte('meal_time', to.toISOString());
@@ -80,7 +84,9 @@ export function Dashboard() {
         protein: acc.protein + (meal.protein_g || 0),
         carbs: acc.carbs + (meal.carbs_g || 0),
         fat: acc.fat + (meal.fat_g || 0),
-      }), { calories: 0, protein: 0, carbs: 0, fat: 0 }) || { calories: 0, protein: 0, carbs: 0, fat: 0 };
+        fiber: acc.fiber + (meal.fiber_g || 0),
+        sugar: acc.sugar + (meal.sugar_g || 0),
+      }), { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0 }) || { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0 };
 
       const totalWater = hydration?.reduce((sum, log) => sum + log.cups, 0) || 0;
       const targets = (profile?.targets as any) || {};
@@ -94,6 +100,10 @@ export function Dashboard() {
         targetCarbs: targets.carbs_g || 200,
         fat: Math.round(mealTotals.fat),
         targetFat: targets.fat_g || 67,
+        fiber: Math.round(mealTotals.fiber),
+        targetFiber: targets.fiber_g || 25,
+        sugar: Math.round(mealTotals.sugar),
+        targetSugar: targets.sugar_g || 25,
         water: totalWater,
         targetWater: 8,
       });
@@ -181,6 +191,9 @@ export function Dashboard() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">Good morning! 🌟</h1>
           <p className="text-muted-foreground">Let's make today a healthy one</p>
+          <p className="text-xs text-muted-foreground mt-1 italic">
+            Your progress isn't just about numbers—it's about building habits that fit your life (BPS-design).
+          </p>
         </div>
         <div className="text-left sm:text-right">
           <p className="text-sm text-muted-foreground">Today</p>
