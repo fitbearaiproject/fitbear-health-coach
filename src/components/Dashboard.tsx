@@ -72,10 +72,10 @@ export function Dashboard() {
         .eq('user_id', user.id)
         .eq('log_date', format(today, 'yyyy-MM-dd'));
 
-      // Load user targets
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('targets')
+      // Load user targets from targets table (not profiles.targets)
+      const { data: userTargets } = await supabase
+        .from('targets')
+        .select('*')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -89,21 +89,20 @@ export function Dashboard() {
       }), { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0 }) || { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0 };
 
       const totalWater = hydration?.reduce((sum, log) => sum + log.cups, 0) || 0;
-      const targets = (profile?.targets as any) || {};
 
       setTodayStats({
         calories: Math.round(mealTotals.calories),
-        targetCalories: targets.calories_per_day || 2000,
+        targetCalories: userTargets?.calories_per_day || 2000,
         protein: Math.round(mealTotals.protein),
-        targetProtein: targets.protein_g || 120,
+        targetProtein: userTargets?.protein_g || 120,
         carbs: Math.round(mealTotals.carbs),
-        targetCarbs: targets.carbs_g || 200,
+        targetCarbs: userTargets?.carbs_g || 200,
         fat: Math.round(mealTotals.fat),
-        targetFat: targets.fat_g || 67,
+        targetFat: userTargets?.fat_g || 67,
         fiber: Math.round(mealTotals.fiber),
-        targetFiber: targets.fiber_g || 25,
+        targetFiber: userTargets?.fiber_g || 25,
         sugar: Math.round(mealTotals.sugar),
-        targetSugar: targets.sugar_g || 25,
+        targetSugar: userTargets?.sugar_g || 25,
         water: totalWater,
         targetWater: 8,
       });
