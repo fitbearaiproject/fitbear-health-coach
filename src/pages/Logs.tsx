@@ -38,6 +38,7 @@ interface NutritionTotals {
   carbs_g: number;
   fat_g: number;
   fiber_g: number;
+  sugar_g: number;
   meals_count: number;
 }
 
@@ -52,7 +53,7 @@ export default function Logs() {
   const [selectedFilter, setSelectedFilter] = useState<'today' | 'week' | 'custom'>('today');
   const [customDateRange, setCustomDateRange] = useState<{ from?: Date; to?: Date }>({});
   const [logs, setLogs] = useState<MealLog[]>([]);
-  const [totals, setTotals] = useState<NutritionTotals>({ kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0, meals_count: 0 });
+  const [totals, setTotals] = useState<NutritionTotals>({ kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0, sugar_g: 0, meals_count: 0 });
   const [targets, setTargets] = useState<UserTargets>({});
   const [isLoading, setIsLoading] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
@@ -221,8 +222,9 @@ const { hydrationLogs, todayTotal: waterToday, addWater, removeWater, loadHydrat
         carbs_g: acc.carbs_g + (log.carbs_g || 0),
         fat_g: acc.fat_g + (log.fat_g || 0),
         fiber_g: acc.fiber_g + (log.fiber_g || 0),
+        sugar_g: acc.sugar_g + (log.sugar_g || 0),
         meals_count: acc.meals_count + 1
-      }), { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0, meals_count: 0 });
+      }), { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0, sugar_g: 0, meals_count: 0 });
 
       setTotals(newTotals);
 
@@ -400,6 +402,10 @@ const { hydrationLogs, todayTotal: waterToday, addWater, removeWater, loadHydrat
                 <div className="text-center p-3 bg-muted rounded-lg">
                   <p className="text-2xl font-bold text-purple-600">{Math.round(totals.fiber_g)}</p>
                   <p className="text-xs text-muted-foreground">Fiber (g)</p>
+                </div>
+                <div className="text-center p-3 bg-muted rounded-lg">
+                  <p className="text-2xl font-bold text-pink-600">{Math.round(totals.sugar_g)}</p>
+                  <p className="text-xs text-muted-foreground">Sugar (g)</p>
                 </div>
               </div>
             </CardContent>
@@ -636,9 +642,9 @@ const { hydrationLogs, todayTotal: waterToday, addWater, removeWater, loadHydrat
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-center space-y-4">
-                <div className="text-4xl font-bold text-blue-600">{waterToday}</div>
-                <p className="text-sm text-muted-foreground">cups consumed</p>
+                <div className="text-center space-y-4">
+                  <div className="text-4xl font-bold text-blue-600">{waterToday}</div>
+                  <p className="text-sm text-muted-foreground">cups consumed (1 cup = 250ml)</p>
                 <div className="flex gap-2 justify-center">
                   <Button size="sm" onClick={() => addWater(1)}>
                     <Plus className="h-4 w-4 mr-1" />

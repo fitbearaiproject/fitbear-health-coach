@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MessageCircle, Camera, Utensils, Heart, Shield, Clock, Star, CheckCircle, Mic, Phone, MessageSquare } from "lucide-react";
-import fitbearLogo from "@/assets/fitbear-logo.png";
+import fitbearLogo from "@/assets/fitbear-logo-full.png";
 interface LandingProps {
   onGetStarted: () => void;
 }
@@ -14,9 +14,7 @@ export default function Landing({
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full border-2 border-dashed border-muted-foreground/40 flex items-center justify-center bg-muted/20">
-              <span className="text-xs font-medium text-muted-foreground">LOGO</span>
-            </div>
+            <img src={fitbearLogo} alt="FitBear AI" className="h-8 object-contain" />
             <h1 className="text-lg sm:text-xl font-bold tracking-tight">FITBEAR AI</h1>
           </div>
           <div className="flex items-center gap-3">

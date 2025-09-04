@@ -11,7 +11,7 @@ import {
   Settings,
   LogOut
 } from "lucide-react";
-import fitbearLogo from "@/assets/fitbear-logo.png";
+import fitbearLogo from "@/assets/fitbear-logo-full.png";
 
 interface NavigationProps {
   currentPage: string;
@@ -39,9 +39,7 @@ export function Navigation({ currentPage, onNavigate, isMobile = false }: Naviga
     )}>
       {/* Logo */}
       <div className="flex items-center gap-3 mb-8 p-2">
-        <div className="w-10 h-10 rounded-full overflow-hidden bg-white flex items-center justify-center">
-          <img src={fitbearLogo} alt="The Fit Bear" className="w-8 h-8 object-contain" />
-        </div>
+        <img src={fitbearLogo} alt="FitBear AI" className="h-8 object-contain" />
         <div>
           <h1 className="text-xl font-bold gradient-text">Fitbear AI</h1>
           <p className="text-xs text-muted-foreground">Your Health Coach</p>

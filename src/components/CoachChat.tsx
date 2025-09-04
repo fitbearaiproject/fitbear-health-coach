@@ -271,46 +271,53 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
         return;
       }
 
-      const url = `${SUPABASE_URL}/functions/v1/deepgram-tts-stream?voice=aura-2-hermes-en&text=${encodeURIComponent(clean)}`;
-      const audio = new Audio(url);
-      audio.preload = 'auto';
+      // Use POST method directly for reliability
+      try {
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/deepgram-tts-stream`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'audio/mpeg'
+          },
+          body: JSON.stringify({ 
+            text: clean, 
+            voice: 'aura-2-hermes-en' 
+          }),
+          signal: ctrl.signal,
+        });
 
-      audio.onended = () => {
-        setIsPlaying(false);
-        currentAudioRef.current = null;
-      };
+        if (!response.ok) {
+          throw new Error(`TTS request failed: ${response.status}`);
+        }
 
-      audio.onerror = async () => {
-        // Fallback to buffered POST if streaming fails
-        try {
-          const res = await fetch(`${SUPABASE_URL}/functions/v1/deepgram-tts-stream`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: clean, voice: 'aura-2-hermes-en' }),
-            signal: ctrl.signal,
-          });
-          if (res.ok) {
-            const blob = await res.blob();
-            const objectUrl = URL.createObjectURL(blob);
-            audio.src = objectUrl;
-            audio.onended = () => {
-              URL.revokeObjectURL(objectUrl);
-              setIsPlaying(false);
-              currentAudioRef.current = null;
-            };
-            try { await audio.play(); } catch {}
-          } else {
-            setIsPlaying(false);
-            currentAudioRef.current = null;
-          }
-        } catch (_) {
+        // Create blob URL for immediate playback
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        const audio = new Audio(audioUrl);
+        
+        // Set up event handlers
+        audio.onended = () => {
           setIsPlaying(false);
           currentAudioRef.current = null;
-        }
-      };
+          URL.revokeObjectURL(audioUrl);
+        };
 
-      currentAudioRef.current = audio;
-      try { await audio.play(); } catch (_) { /* autoplay constraints */ }
+        audio.onerror = () => {
+          setIsPlaying(false);
+          currentAudioRef.current = null;
+          URL.revokeObjectURL(audioUrl);
+          console.error('Audio playback failed');
+        };
+
+        // Start playback immediately
+        currentAudioRef.current = audio;
+        await audio.play();
+      } catch (error) {
+        setIsPlaying(false);
+        currentAudioRef.current = null;
+        console.error('TTS playback failed:', error);
+      }
     };
 
     // Begin playback

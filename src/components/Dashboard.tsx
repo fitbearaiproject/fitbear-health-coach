@@ -189,7 +189,11 @@ export function Dashboard() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">Good morning! 🌟</h1>
+          {(() => {
+            const hour = new Date().getHours();
+            const greeting = hour < 12 ? 'Good morning!' : hour < 17 ? 'Good afternoon!' : 'Good evening!';
+            return <h1 className="text-2xl sm:text-3xl font-bold">{greeting} 🌟</h1>;
+          })()}
           <p className="text-muted-foreground">Let's make today a healthy one</p>
           <p className="text-xs text-muted-foreground mt-1 italic">
             Your progress isn't just about numbers—it's about building habits that fit your life (BPS-design).
@@ -197,7 +201,11 @@ export function Dashboard() {
         </div>
         <div className="text-left sm:text-right">
           <p className="text-sm text-muted-foreground">Today</p>
-          <p className="text-lg font-semibold">{new Date().toLocaleDateString()}</p>
+          <p className="text-lg font-semibold">{new Date().toLocaleDateString('en-IN', { 
+            day: '2-digit', 
+            month: 'short', 
+            year: 'numeric' 
+          })}</p>
         </div>
       </div>
 
@@ -247,7 +255,7 @@ export function Dashboard() {
             <div className="flex items-center gap-3">
               <Droplets className="w-6 h-6 sm:w-8 sm:h-8 text-accent flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-muted-foreground">Water</p>
+                <p className="text-sm text-muted-foreground">Water (1 cup = 250ml)</p>
                 <p className="text-xl sm:text-2xl font-bold truncate">{todayStats.water} cups</p>
                 <p className="text-xs text-muted-foreground">of {todayStats.targetWater}</p>
               </div>
@@ -325,6 +333,28 @@ export function Dashboard() {
               </div>
               <Progress 
                 value={(todayStats.fat / todayStats.targetFat) * 100} 
+                className="h-3"
+              />
+            </div>
+            
+            <div>
+              <div className="flex justify-between text-sm mb-2">
+                <span>Fiber</span>
+                <span className="font-medium">{todayStats.fiber}g/{todayStats.targetFiber}g</span>
+              </div>
+              <Progress 
+                value={(todayStats.fiber / todayStats.targetFiber) * 100} 
+                className="h-3"
+              />
+            </div>
+            
+            <div>
+              <div className="flex justify-between text-sm mb-2">
+                <span>Sugar</span>
+                <span className="font-medium">{todayStats.sugar}g/{todayStats.targetSugar}g</span>
+              </div>
+              <Progress 
+                value={(todayStats.sugar / todayStats.targetSugar) * 100} 
                 className="h-3"
               />
             </div>
