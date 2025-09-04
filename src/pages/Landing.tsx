@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MessageCircle, Camera, Utensils, Heart, Shield, Clock, Star, CheckCircle, Mic, Phone, MessageSquare } from "lucide-react";
-import fitbearLogo from "@/assets/fitbear-logo-full.png";
+
 interface LandingProps {
   onGetStarted: () => void;
 }
@@ -14,7 +14,7 @@ export default function Landing({
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src={fitbearLogo} alt="FitBear AI" className="h-8 object-contain" />
+            <img src="/lovable-uploads/47ea420a-6f0b-4294-86c9-2a679f56730d.png" alt="FitBear AI logo" className="h-8 w-auto object-contain" />
             <h1 className="text-lg sm:text-xl font-bold tracking-tight">FITBEAR AI</h1>
           </div>
           <div className="flex items-center gap-3">
@@ -29,6 +29,10 @@ export default function Landing({
       <section className="py-16 sm:py-20 px-4">
         <div className="container mx-auto max-w-4xl">
           <div className="text-center space-y-6 sm:space-y-8">
+            <div className="flex items-center justify-center gap-3">
+              <img src="/lovable-uploads/47ea420a-6f0b-4294-86c9-2a679f56730d.png" alt="FitBear AI logo" className="h-10 w-auto object-contain" />
+              <span className="text-2xl sm:text-3xl font-extrabold tracking-tight">FITBEAR AI</span>
+            </div>
             <h2 className="text-3xl sm:text-4xl md:text-6xl font-bold leading-tight">FitBear AI: Health and Nutrition powered by the The Fit Bear philosophy!</h2>
             <p className="text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">Chat or speak with Coach C to get personal guidance on meals, workouts, and everyday choices—built for Indian food and routines but catering to a global audience.</p>
             <div className="flex flex-col gap-4 justify-center items-center pt-4">
@@ -477,7 +481,7 @@ export default function Landing({
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full overflow-hidden bg-white flex items-center justify-center">
-                <img src={fitbearLogo} alt="The Fit Bear" className="w-6 h-6 object-contain" />
+                <img src="/lovable-uploads/47ea420a-6f0b-4294-86c9-2a679f56730d.png" alt="FitBear AI logo" className="w-6 h-6 object-contain" />
               </div>
               <span className="font-semibold gradient-text">Fitbear AI</span>
             </div>
