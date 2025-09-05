@@ -30,7 +30,7 @@ export default function Landing({
         <div className="container mx-auto max-w-4xl">
           <div className="text-center space-y-6 sm:space-y-8">
             <div className="flex items-center justify-center gap-3">
-              <img src="/lovable-uploads/47ea420a-6f0b-4294-86c9-2a679f56730d.png" alt="FitBear AI logo" className="h-96 w-auto object-contain" />
+              <img src="/lovable-uploads/47ea420a-6f0b-4294-86c9-2a679f56730d.png" alt="FitBear AI logo" className="h-80 w-auto object-contain" />
             </div>
             <h2 className="text-3xl sm:text-4xl md:text-6xl font-bold leading-tight">FitBear AI: Health and Nutrition powered by the The Fit Bear philosophy!</h2>
             <p className="text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">Chat or speak with Coach C to get personal guidance on meals, workouts, and everyday choices—built for Indian food and routines but catering to a global audience.</p>
