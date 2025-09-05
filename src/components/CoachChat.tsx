@@ -235,6 +235,12 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
   };
 
   const playAudio = async (text: string) => {
+    // GUARDRAIL: Input validation
+    if (!text || typeof text !== 'string' || !text.trim()) {
+      console.warn('[TTS] Invalid text input, skipping TTS');
+      return;
+    }
+
     const sanitizeForTTS = (t: string) =>
       t
         .replace(/```[\s\S]*?```/g, '')
@@ -245,80 +251,178 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
 
     const SUPABASE_URL = "https://xnncvfuamecmjvvoaywz.supabase.co";
 
-    // Stop any ongoing playback
+    // GUARDRAIL: Cleanup any ongoing playback to prevent conflicts
     if (ttsAbortRef.current) {
       ttsAbortRef.current.abort();
       ttsAbortRef.current = null;
     }
     if (currentAudioRef.current) {
-      try { currentAudioRef.current.pause(); } catch {}
-      currentAudioRef.current.src = '';
-      currentAudioRef.current.load();
+      try { 
+        currentAudioRef.current.pause();
+        currentAudioRef.current.src = '';
+        currentAudioRef.current.load();
+      } catch (e) {
+        console.warn('[TTS] Cleanup warning:', e);
+      }
       currentAudioRef.current = null;
     }
     if (ttsObjectUrlRef.current) {
-      URL.revokeObjectURL(ttsObjectUrlRef.current);
+      try {
+        URL.revokeObjectURL(ttsObjectUrlRef.current);
+      } catch (e) {
+        console.warn('[TTS] URL cleanup warning:', e);
+      }
       ttsObjectUrlRef.current = null;
     }
 
-    const clean = sanitizeForTTS(text);
-    console.log('[TTS] streaming start', { len: clean.length });
+    let clean = sanitizeForTTS(text);
+    
+    // GUARDRAIL: Text length validation (prevent excessive requests)
+    if (clean.length === 0) {
+      console.warn('[TTS] No content after sanitization');
+      return;
+    }
+    if (clean.length > 5000) {
+      console.warn('[TTS] Text too long, truncating to 5000 chars');
+      clean = clean.substring(0, 5000) + '...';
+    }
 
-    // Build streaming URL (GET) so audio can start immediately without waiting for full download
-    const streamUrl = `${SUPABASE_URL}/functions/v1/deepgram-tts-stream?text=${encodeURIComponent(clean)}&voice=aura-2-hermes-en`;
+    console.log('[TTS] streaming start', { originalLen: text.length, cleanLen: clean.length });
 
+    // GUARDRAIL: Robust URL encoding with fallback
+    let encodedText;
+    try {
+      encodedText = encodeURIComponent(clean);
+    } catch (e) {
+      console.error('[TTS] URL encoding failed:', e);
+      return;
+    }
+
+    const streamUrl = `${SUPABASE_URL}/functions/v1/deepgram-tts-stream?text=${encodedText}&voice=aura-2-hermes-en`;
+
+    // GUARDRAIL: Create audio with comprehensive error handling
     const audio = new Audio();
+    let retryCount = 0;
+    const maxRetries = 2;
+
+    const setupAudioHandlers = () => {
+      audio.onplaying = () => {
+        console.log('[TTS] Audio playing started');
+        setIsPlaying(true);
+      };
+      
+      audio.oncanplay = () => {
+        console.log('[TTS] Audio can play');
+      };
+      
+      audio.onended = () => {
+        console.log('[TTS] Audio ended');
+        setIsPlaying(false);
+        if (currentAudioRef.current === audio) {
+          currentAudioRef.current = null;
+        }
+      };
+      
+      audio.onerror = (e) => {
+        console.error('[TTS] Audio error:', e);
+        setIsPlaying(false);
+        if (currentAudioRef.current === audio) {
+          currentAudioRef.current = null;
+        }
+
+        // GUARDRAIL: Retry mechanism for transient failures
+        if (retryCount < maxRetries) {
+          retryCount++;
+          console.log(`[TTS] Retrying (${retryCount}/${maxRetries})...`);
+          setTimeout(() => {
+            if (currentAudioRef.current === audio) {
+              audio.load();
+              audio.play().catch(err => console.error('[TTS] Retry failed:', err));
+            }
+          }, 1000 * retryCount);
+        }
+      };
+      
+      audio.onstalled = () => {
+        console.warn('[TTS] Audio stalled, attempting recovery');
+        // GUARDRAIL: Auto-recovery for stalled audio
+        setTimeout(() => {
+          if (currentAudioRef.current === audio && audio.readyState < 3) {
+            audio.load();
+          }
+        }, 2000);
+      };
+      
+      audio.onwaiting = () => console.log('[TTS] Audio waiting for data');
+      
+      audio.onabort = () => console.log('[TTS] Audio aborted');
+      
+      audio.onemptied = () => console.log('[TTS] Audio emptied');
+    };
+
+    setupAudioHandlers();
     audio.src = streamUrl;
     audio.preload = 'auto';
-
-    audio.onplaying = () => {
-      setIsPlaying(true);
-    };
-    audio.oncanplay = () => {
-      // ready to start
-    };
-    audio.onended = () => {
-      setIsPlaying(false);
-      if (currentAudioRef.current === audio) {
-        currentAudioRef.current = null;
-      }
-    };
-    audio.onerror = (e) => {
-      console.error('Audio playback error', e);
-      setIsPlaying(false);
-      if (currentAudioRef.current === audio) {
-        currentAudioRef.current = null;
-      }
-    };
-    audio.onstalled = () => console.warn('Audio stalled');
-    audio.onwaiting = () => console.log('Audio waiting for data');
-
+    
+    // GUARDRAIL: Set reference before any async operations
     currentAudioRef.current = audio;
+
     try {
-      await audio.play();
+      // GUARDRAIL: Timeout for play() promise to prevent hanging
+      const playPromise = audio.play();
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Play timeout')), 10000)
+      );
+      
+      await Promise.race([playPromise, timeoutPromise]);
       setIsPlaying(true);
+      console.log('[TTS] Audio play initiated successfully');
     } catch (e) {
-      console.error('Autoplay/playback error:', e);
+      console.error('[TTS] Autoplay/playback error:', e);
       setIsPlaying(false);
+      
+      // GUARDRAIL: Clean up failed audio attempt
+      if (currentAudioRef.current === audio) {
+        currentAudioRef.current = null;
+      }
     }
   };
 
   const stopAudio = () => {
+    console.log('[TTS] Stop audio requested');
+    
+    // GUARDRAIL: Robust cleanup with error handling
     if (ttsAbortRef.current) {
-      ttsAbortRef.current.abort();
+      try {
+        ttsAbortRef.current.abort();
+      } catch (e) {
+        console.warn('[TTS] Abort controller error:', e);
+      }
       ttsAbortRef.current = null;
     }
+    
     if (currentAudioRef.current) {
-      try { currentAudioRef.current.pause(); } catch {}
-      currentAudioRef.current.src = '';
-      currentAudioRef.current.load();
+      try { 
+        currentAudioRef.current.pause();
+        currentAudioRef.current.src = '';
+        currentAudioRef.current.load();
+      } catch (e) {
+        console.warn('[TTS] Audio stop error:', e);
+      }
       currentAudioRef.current = null;
     }
+    
     if (ttsObjectUrlRef.current) {
-      URL.revokeObjectURL(ttsObjectUrlRef.current);
+      try {
+        URL.revokeObjectURL(ttsObjectUrlRef.current);
+      } catch (e) {
+        console.warn('[TTS] URL revoke error:', e);
+      }
       ttsObjectUrlRef.current = null;
     }
+    
     setIsPlaying(false);
+    console.log('[TTS] Audio stopped and cleaned up');
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
