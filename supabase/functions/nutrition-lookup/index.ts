@@ -53,15 +53,18 @@ serve(async (req) => {
 
     console.log(`Looking up nutrition for: "${dish_name}"`);
 
-    // Step 1: Exact match in dish_catalog
+    // Step 1: Exact match in dish_catalog (prioritize IFCT/INDB for Indian foods)
     const { data: exactMatch } = await supabase
       .from('dish_catalog')
       .select('*')
       .ilike('name', dish_name)
-      .single();
+      .order('confidence_level', { ascending: false })
+      .order('data_source', { ascending: false }) // IFCT/INDB before USDA
+      .limit(1)
+      .maybeSingle();
 
-    if (exactMatch && exactMatch.confidence_level === 'HIGH') {
-      console.log(`Found HIGH confidence exact match for: ${dish_name}`);
+    if (exactMatch && (exactMatch.confidence_level === 'HIGH' || exactMatch.data_source === 'IFCT' || exactMatch.data_source === 'INDB')) {
+      console.log(`Found HIGH confidence exact match for: ${dish_name} (${exactMatch.data_source})`);
       return new Response(JSON.stringify({
         dish_name: exactMatch.name,
         kcal: exactMatch.kcal || 0,
@@ -85,18 +88,22 @@ serve(async (req) => {
       });
     }
 
-    // Step 2: Fuzzy search in dish_catalog and synonyms
+    // Step 2: Fuzzy search in dish_catalog and synonyms (prioritize Indian sources)
     const { data: fuzzyMatches } = await supabase
       .from('dish_catalog')
       .select('*')
       .or(`name.ilike.%${dish_name}%,catalog_key.ilike.%${dish_name.replace(/\s+/g, '_').toLowerCase()}%`)
+      .order('data_source', { ascending: false }) // IFCT/INDB first
       .order('confidence_level', { ascending: false })
-      .limit(3);
+      .limit(5);
 
     if (fuzzyMatches && fuzzyMatches.length > 0) {
-      const bestMatch = fuzzyMatches[0];
-      if (bestMatch.confidence_level === 'HIGH' || bestMatch.confidence_level === 'MEDIUM') {
-        console.log(`Found fuzzy match for: ${dish_name} -> ${bestMatch.name}`);
+      // Prefer Indian sources (IFCT/INDB) over USDA for Indian context
+      const bestMatch = fuzzyMatches.find(m => m.data_source === 'IFCT' || m.data_source === 'INDB') || fuzzyMatches[0];
+      
+      if (bestMatch.confidence_level === 'HIGH' || bestMatch.confidence_level === 'MEDIUM' || 
+          bestMatch.data_source === 'IFCT' || bestMatch.data_source === 'INDB') {
+        console.log(`Found fuzzy match for: ${dish_name} -> ${bestMatch.name} (${bestMatch.data_source})`);
         return new Response(JSON.stringify({
           dish_name: bestMatch.name,
           kcal: bestMatch.kcal || 0,
@@ -106,7 +113,7 @@ serve(async (req) => {
           fiber_g: bestMatch.fiber_g,
           sugar_g: bestMatch.sugar_g,
           sodium_mg: bestMatch.sodium_mg,
-          confidence_level: 'MEDIUM', // Downgrade due to fuzzy match
+          confidence_level: bestMatch.data_source === 'IFCT' || bestMatch.data_source === 'INDB' ? 'HIGH' : 'MEDIUM',
           data_source: bestMatch.data_source,
           portion_weight_g: bestMatch.portion_weight_g,
           micronutrients: {
