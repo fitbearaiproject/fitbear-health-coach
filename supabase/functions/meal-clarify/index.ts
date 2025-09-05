@@ -77,22 +77,23 @@ serve(async (req) => {
       // Use database result if high confidence
       const nutrition = lookupResult.data;
       
-      // Extract corrected name from clarification
-      const correctedName = requestData.user_clarification.toLowerCase().includes('french beans') ? 
-        'French Beans and Aloo Sabzi' :
-        requestData.user_clarification.toLowerCase().includes('cucumber') ? 
-        'Cucumber Slices' :
-        requestData.dish_name; // fallback to original if no clear correction
+      // Prefer canonical name from lookup; otherwise infer from clarification
+      const clarification = requestData.user_clarification?.toLowerCase() || '';
+      const lookupName = (lookupResult.data?.dish_name || lookupResult.data?.name || '').toString();
+      const inferredName = clarification.includes('raita') ? 'Cucumber Raita'
+        : clarification.includes('french beans') ? 'French Beans and Aloo Sabzi'
+        : requestData.dish_name;
+      const correctedName = lookupName || inferredName;
       
       clarifiedDish = {
         name: correctedName,
         portion: requestData.original_analysis.portion,
         kcal: Math.round(nutrition.kcal),
-        protein_g: Math.round(nutrition.protein_g * 10) / 10,
-        carbs_g: Math.round(nutrition.carbs_g * 10) / 10,
-        fat_g: Math.round(nutrition.fat_g * 10) / 10,
-        fiber_g: Math.round(nutrition.fiber_g * 10) / 10,
-        sugar_g: Math.round(nutrition.sugar_g * 10) / 10,
+        protein_g: Math.round((nutrition.protein_g || 0) * 10) / 10,
+        carbs_g: Math.round((nutrition.carbs_g || 0) * 10) / 10,
+        fat_g: Math.round((nutrition.fat_g || 0) * 10) / 10,
+        fiber_g: Math.round((nutrition.fiber_g || 0) * 10) / 10,
+        sugar_g: Math.round((nutrition.sugar_g || 0) * 10) / 10,
         description: `${requestData.original_analysis.description} (clarified based on your input)`,
         coach_note: `Based on your clarification: "${requestData.user_clarification}", this analysis has been updated with more accurate nutrition data.`,
         flags: ['clarified', 'database'],
