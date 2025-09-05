@@ -618,15 +618,27 @@ Output format (strict): Return ONLY valid JSON with this schema:
     );
 
   } catch (error) {
-    console.error('Meal analysis error:', error);
+    console.error('❌ Meal analysis error:', error);
+    console.error('Error stack:', error.stack);
     const latencyMs = Date.now() - startTime;
+
+    // Determine error class based on error type
+    let errorClass = 'Internal';
+    if (error.message?.includes('environment')) {
+      errorClass = 'Config';
+    } else if (error.message?.includes('Request body')) {
+      errorClass = 'Request';
+    } else if (error.message?.includes('fetch')) {
+      errorClass = 'Network';
+    }
 
     return new Response(
       JSON.stringify({ 
         error: error.message,
         request_id: requestId,
-        error_class: 'Internal',
-        latency_ms: latencyMs
+        error_class: errorClass,
+        latency_ms: latencyMs,
+        stack: error.stack
       }),
       { 
         status: 500, 

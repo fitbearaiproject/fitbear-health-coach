@@ -51,7 +51,7 @@ serve(async (req) => {
     const startTime = Date.now();
     
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE');
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const googleApiKey = Deno.env.get('GOOGLE_API_KEY');
 
     if (!supabaseUrl || !supabaseKey || !googleApiKey) {

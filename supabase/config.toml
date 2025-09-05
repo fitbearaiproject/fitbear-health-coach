@@ -20,3 +20,12 @@ verify_jwt = false
 
 [functions.meal-analyze]
 verify_jwt = false
+
+[functions.meal-clarify]
+verify_jwt = false
+
+[functions.nutrition-lookup]
+verify_jwt = false
+
+[functions.import-indian-nutrition]
+verify_jwt = false
