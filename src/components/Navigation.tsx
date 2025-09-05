@@ -39,7 +39,7 @@ export function Navigation({ currentPage, onNavigate, isMobile = false }: Naviga
     )}>
       {/* Logo */}
       <div className="flex items-center gap-3 mb-8 p-2">
-        <img src="/lovable-uploads/47ea420a-6f0b-4294-86c9-2a679f56730d.png" alt="FitBear AI logo" className="h-8 w-auto object-contain" />
+        <img src="/lovable-uploads/47ea420a-6f0b-4294-86c9-2a679f56730d.png" alt="FitBear AI logo" className="h-10 w-auto object-contain" />
         <div>
           <h1 className="text-xl font-bold gradient-text">Fitbear AI</h1>
           <p className="text-xs text-muted-foreground">Your Health Coach</p>
