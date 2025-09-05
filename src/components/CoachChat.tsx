@@ -251,108 +251,56 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
       ttsAbortRef.current = null;
     }
     if (currentAudioRef.current) {
-      currentAudioRef.current.pause();
+      try { currentAudioRef.current.pause(); } catch {}
+      currentAudioRef.current.src = '';
+      currentAudioRef.current.load();
       currentAudioRef.current = null;
     }
-
-    const ctrl = new AbortController();
-    ttsAbortRef.current = ctrl;
+    if (ttsObjectUrlRef.current) {
+      URL.revokeObjectURL(ttsObjectUrlRef.current);
+      ttsObjectUrlRef.current = null;
+    }
 
     const clean = sanitizeForTTS(text);
-    console.log('[TTS] start', { len: clean.length });
+    console.log('[TTS] streaming start', { len: clean.length });
 
-    // Show speaking state while we fetch/generate audio (will revert on error)
-    setIsPlaying(true);
+    // Build streaming URL (GET) so audio can start immediately without waiting for full download
+    const streamUrl = `${SUPABASE_URL}/functions/v1/deepgram-tts-stream?text=${encodeURIComponent(clean)}&voice=aura-2-hermes-en`;
 
-    // Use entire text block for continuous playback
-    let cancelled = false;
+    const audio = new Audio();
+    audio.src = streamUrl;
+    audio.preload = 'auto';
 
-    const playEntireText = async () => {
-      if (cancelled) {
-        setIsPlaying(false);
+    audio.onplaying = () => {
+      setIsPlaying(true);
+    };
+    audio.oncanplay = () => {
+      // ready to start
+    };
+    audio.onended = () => {
+      setIsPlaying(false);
+      if (currentAudioRef.current === audio) {
         currentAudioRef.current = null;
-        return;
-      }
-
-      try {
-        const response = await fetch(`${SUPABASE_URL}/functions/v1/deepgram-tts-stream`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'audio/mpeg'
-          },
-          body: JSON.stringify({
-            text: clean,
-            voice: 'aura-2-hermes-en'
-          }),
-          signal: ctrl.signal,
-        });
-
-        if (!response.ok) {
-          const errText = await response.text().catch(() => '');
-          throw new Error(`TTS request failed: ${response.status} ${errText}`);
-        }
-
-        const contentType = response.headers.get('Content-Type') || '';
-        if (!contentType.includes('audio')) {
-          const err = await response.text();
-          throw new Error(err || 'TTS did not return audio');
-        }
-
-        const audioBlob = await response.blob();
-        const audioUrl = URL.createObjectURL(audioBlob);
-        if (ttsObjectUrlRef.current) {
-          URL.revokeObjectURL(ttsObjectUrlRef.current);
-        }
-        ttsObjectUrlRef.current = audioUrl;
-
-        const audio = new Audio(audioUrl);
-        audio.onended = () => {
-          setIsPlaying(false);
-          currentAudioRef.current = null;
-          if (ttsObjectUrlRef.current) {
-            URL.revokeObjectURL(ttsObjectUrlRef.current);
-            ttsObjectUrlRef.current = null;
-          }
-        };
-        audio.onerror = () => {
-          setIsPlaying(false);
-          currentAudioRef.current = null;
-          if (ttsObjectUrlRef.current) {
-            URL.revokeObjectURL(ttsObjectUrlRef.current);
-            ttsObjectUrlRef.current = null;
-          }
-          console.error('Audio playback failed');
-        };
-
-        currentAudioRef.current = audio;
-        try {
-          await audio.play();
-          setIsPlaying(true);
-        } catch (e) {
-          console.error('Autoplay/playback error:', e);
-          setIsPlaying(false);
-          throw e;
-        }
-      } catch (error) {
-        setIsPlaying(false);
-        currentAudioRef.current = null;
-        console.error('TTS playback failed:', error);
       }
     };
-
-    // Begin playback
-    playEntireText();
-
-    // Handle cancel/abort
-    ctrl.signal.addEventListener('abort', () => {
-      cancelled = true;
-      if (currentAudioRef.current) {
-        currentAudioRef.current.pause();
+    audio.onerror = (e) => {
+      console.error('Audio playback error', e);
+      setIsPlaying(false);
+      if (currentAudioRef.current === audio) {
         currentAudioRef.current = null;
       }
+    };
+    audio.onstalled = () => console.warn('Audio stalled');
+    audio.onwaiting = () => console.log('Audio waiting for data');
+
+    currentAudioRef.current = audio;
+    try {
+      await audio.play();
+      setIsPlaying(true);
+    } catch (e) {
+      console.error('Autoplay/playback error:', e);
       setIsPlaying(false);
-    });
+    }
   };
 
   const stopAudio = () => {
@@ -361,8 +309,14 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
       ttsAbortRef.current = null;
     }
     if (currentAudioRef.current) {
-      currentAudioRef.current.pause();
+      try { currentAudioRef.current.pause(); } catch {}
+      currentAudioRef.current.src = '';
+      currentAudioRef.current.load();
       currentAudioRef.current = null;
+    }
+    if (ttsObjectUrlRef.current) {
+      URL.revokeObjectURL(ttsObjectUrlRef.current);
+      ttsObjectUrlRef.current = null;
     }
     setIsPlaying(false);
   };
