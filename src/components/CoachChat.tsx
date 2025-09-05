@@ -280,7 +280,7 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
           },
           body: JSON.stringify({
             text: clean,
-            voice: 'aura-2-thalia-en'
+            voice: 'aura-2-hermes-en'
           }),
           signal: ctrl.signal,
         });
