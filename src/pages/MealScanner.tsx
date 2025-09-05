@@ -9,11 +9,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { ImageProcessor, ScannerDiagnostics, MealScanRequest } from '@/lib/imageProcessor';
-import { Camera, Loader2, Upload, X, Plus, ImageIcon, Clock, Info } from 'lucide-react';
+import { Camera, Loader2, Upload, X, Plus, ImageIcon, Clock, Info, AlertCircle } from 'lucide-react';
 import { NutritionBadges } from '@/components/NutritionBadges';
 
 interface DishItem {
@@ -28,6 +29,13 @@ interface DishItem {
   description: string;
   coach_note: string;
   flags: string[];
+  confidence_level?: string;
+  data_source?: string;
+}
+
+interface ClarificationRequest {
+  dish: DishItem;
+  clarification: string;
 }
 
 interface MealAnalysis {
@@ -68,6 +76,12 @@ interface SelectedDish {
 
 export default function MealScanner() {
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [clarificationRequests, setClarificationRequests] = useState<DishItem[]>([]);
+  const [showClarificationDialog, setShowClarificationDialog] = useState(false);
+  const [activeClarification, setActiveClarification] = useState<DishItem | null>(null);
+  const [clarificationInput, setClarificationInput] = useState('');
+  const [isClarifying, setIsClarifying] = useState(false);
+  const [clarificationIndex, setClarificationIndex] = useState(0);
   const [imagePreview, setImagePreview] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -247,10 +261,26 @@ export default function MealScanner() {
       });
 
       setAnalysis(data as AnalysisResult);
-      toast({
-        title: "Meal analyzed successfully!",
-        description: `Analysis completed in ${data.latency_ms}ms. Review the detected items below.`,
-      });
+      
+      // Check for low/medium confidence dishes that need clarification
+      const needsClarification = data.analysis.dishes.filter((dish: DishItem) => 
+        dish.confidence_level === 'LOW' || dish.confidence_level === 'MEDIUM'
+      );
+      
+      if (needsClarification.length > 0) {
+        setClarificationRequests(needsClarification);
+        setActiveClarification(needsClarification[0]);
+        setShowClarificationDialog(true);
+        toast({
+          title: "Analysis complete with clarifications needed",
+          description: `${needsClarification.length} items need clarification for better accuracy.`,
+        });
+      } else {
+        toast({
+          title: "Meal analyzed successfully!",
+          description: `Analysis completed in ${data.latency_ms}ms. Review the detected items below.`,
+        });
+      }
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to analyze meal';
@@ -369,6 +399,116 @@ export default function MealScanner() {
     } finally {
       setIsLogging(false);
     }
+  };
+
+  const processClarification = async (skipCurrent = false) => {
+    if (!skipCurrent && (!clarificationInput.trim() || !activeClarification || !userProfile)) return;
+    
+    setIsClarifying(true);
+    
+    try {
+      let updatedDish = activeClarification;
+      
+      if (!skipCurrent) {
+        // Send clarification to backend
+        const { data, error } = await supabase.functions.invoke('meal-clarify', {
+          body: {
+            dish_name: activeClarification.name,
+            user_clarification: clarificationInput,
+            original_analysis: activeClarification,
+            bps_profile: {
+              diet_type: userProfile.diet_type,
+              conditions: userProfile.conditions || [],
+              activity_level: userProfile.activity_level,
+              health_goals: userProfile.health_goals,
+              allergies: userProfile.allergies || [],
+              cuisines: userProfile.cuisines || []
+            }
+          }
+        });
+
+        if (error) throw error;
+
+        if (data.success) {
+          updatedDish = data.clarified_dish;
+          
+          // Update the dish in the analysis
+          setAnalysis(prev => {
+            if (!prev) return prev;
+            
+            const updatedDishes = prev.analysis.dishes.map(dish => 
+              dish.name === activeClarification.name ? updatedDish : dish
+            );
+            
+            // Recalculate summary
+            const newSummary = {
+              total_kcal: updatedDishes.reduce((sum, dish) => sum + dish.kcal, 0),
+              protein_g: Math.round(updatedDishes.reduce((sum, dish) => sum + dish.protein_g, 0) * 10) / 10,
+              carbs_g: Math.round(updatedDishes.reduce((sum, dish) => sum + dish.carbs_g, 0) * 10) / 10,
+              fat_g: Math.round(updatedDishes.reduce((sum, dish) => sum + dish.fat_g, 0) * 10) / 10,
+              fiber_g: Math.round(updatedDishes.reduce((sum, dish) => sum + dish.fiber_g, 0) * 10) / 10,
+              sugar_g: Math.round(updatedDishes.reduce((sum, dish) => sum + dish.sugar_g, 0) * 10) / 10,
+            };
+            
+            return {
+              ...prev,
+              analysis: {
+                ...prev.analysis,
+                dishes: updatedDishes,
+                summary: newSummary
+              }
+            };
+          });
+          
+          toast({
+            title: "Clarification processed!",
+            description: `${updatedDish.name} has been updated with ${updatedDish.confidence_level} confidence.`,
+          });
+        }
+      }
+      
+      // Move to next item or close dialog
+      const nextIndex = clarificationIndex + 1;
+      setClarificationIndex(nextIndex);
+      
+      if (nextIndex >= clarificationRequests.length) {
+        // All clarifications done
+        setShowClarificationDialog(false);
+        setClarificationRequests([]);
+        setActiveClarification(null);
+        setClarificationIndex(0);
+        toast({
+          title: "All clarifications complete!",
+          description: "Your meal analysis has been updated based on your inputs.",
+        });
+      } else {
+        // Move to next clarification
+        setActiveClarification(clarificationRequests[nextIndex]);
+        setClarificationInput('');
+      }
+      
+    } catch (error) {
+      console.error('Clarification error:', error);
+      toast({
+        title: "Clarification failed",
+        description: error instanceof Error ? error.message : 'Unable to process clarification',
+        variant: "destructive",
+      });
+    } finally {
+      setIsClarifying(false);
+    }
+  };
+
+  const skipAllClarifications = () => {
+    setShowClarificationDialog(false);
+    setClarificationRequests([]);
+    setActiveClarification(null);
+    setClarificationIndex(0);
+    setClarificationInput('');
+    toast({
+      title: "Clarifications skipped",
+      description: "Using original analysis results.",
+    });
   };
 
   return (
@@ -555,15 +695,26 @@ export default function MealScanner() {
                               className="mt-1"
                             />
                             <div className="flex-1 space-y-3">
-                              <div className="flex justify-between items-start">
-                                <div>
-                                  <h4 className="font-medium">{dish.name}</h4>
-                                  {dish.description && (
-                                    <p className="text-sm text-muted-foreground mt-1">{dish.description}</p>
-                                  )}
-                                </div>
-                                <span className="text-sm font-medium">{dish.kcal} kcal</span>
-                              </div>
+                               <div className="flex justify-between items-start">
+                                 <div className="flex-1">
+                                   <div className="flex items-center gap-2">
+                                     <h4 className="font-medium">{dish.name}</h4>
+                                     {dish.confidence_level && (
+                                       <Badge 
+                                         variant={dish.confidence_level === 'HIGH' ? 'default' : 
+                                                dish.confidence_level === 'MEDIUM' ? 'secondary' : 'outline'}
+                                         className="text-xs"
+                                       >
+                                         {dish.confidence_level}
+                                       </Badge>
+                                     )}
+                                   </div>
+                                   {dish.description && (
+                                     <p className="text-sm text-muted-foreground mt-1">{dish.description}</p>
+                                   )}
+                                 </div>
+                                 <span className="text-sm font-medium">{dish.kcal} kcal</span>
+                               </div>
                               
                               {dish.coach_note && (
                                 <div className="flex items-start gap-2 p-2 bg-blue-50 rounded-md">
@@ -715,6 +866,78 @@ export default function MealScanner() {
           )}
         </div>
       </div>
+
+      {/* Clarification Dialog */}
+      <Dialog open={showClarificationDialog} onOpenChange={() => {}}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-amber-500" />
+              Clarification Needed
+            </DialogTitle>
+            <DialogDescription>
+              Item {clarificationIndex + 1} of {clarificationRequests.length}: Help us improve the accuracy for "{activeClarification?.name}"
+            </DialogDescription>
+          </DialogHeader>
+          
+          {activeClarification && (
+            <div className="space-y-4">
+              <div className="p-3 bg-gray-50 rounded-md">
+                <h4 className="font-medium">{activeClarification.name}</h4>
+                <p className="text-sm text-muted-foreground mt-1">{activeClarification.description}</p>
+                <div className="flex items-center gap-2 mt-2">
+                  <Badge variant="outline" className="text-xs">
+                    {activeClarification.confidence_level} confidence
+                  </Badge>
+                  <span className="text-sm">{activeClarification.kcal} kcal</span>
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="clarification-input">
+                  Please provide more details about this item:
+                </Label>
+                <Textarea
+                  id="clarification-input"
+                  placeholder="e.g., 'It's actually dal makhani with extra cream' or 'This is a small portion, about half the usual size' or 'This is made with coconut oil instead of ghee'"
+                  value={clarificationInput}
+                  onChange={(e) => setClarificationInput(e.target.value)}
+                  className="min-h-[80px]"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Describe preparation method, ingredients, portion size, or any other details that might affect nutrition.
+                </p>
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter className="flex flex-col sm:flex-row gap-2">
+            <Button variant="ghost" onClick={skipAllClarifications}>
+              Skip All
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => processClarification(true)}
+              disabled={isClarifying}
+            >
+              Skip This
+            </Button>
+            <Button 
+              onClick={() => processClarification(false)}
+              disabled={isClarifying || !clarificationInput.trim()}
+            >
+              {isClarifying ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Processing...
+                </>
+              ) : (
+                'Update & Continue'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
