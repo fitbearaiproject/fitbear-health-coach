@@ -19,16 +19,28 @@ serve(async (req) => {
 
     console.log('Starting Indian nutrition data import...');
 
-    // Import IFCT 2017 data
-    console.log('Fetching IFCT 2017 data...');
-    const ifctResponse = await fetch('https://raw.githubusercontent.com/nodef/ifct2017/main/index.json');
-    const ifctData = await ifctResponse.json();
+    // Import IFCT 2017 data from NPM package data
+    console.log('Fetching IFCT 2017 data from npmjs CDN...');
+    const ifctResponse = await fetch('https://unpkg.com/@ifct2017/compositions@latest/compositions.csv');
+    const ifctCsv = await ifctResponse.text();
+    
+    // Parse IFCT CSV
+    const ifctLines = ifctCsv.split('\n');
+    const ifctHeaders = ifctLines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+    
+    let ifctImported = 0;
 
-    let importedCount = 0;
+    for (let i = 1; i < ifctLines.length; i++) {
+      const line = ifctLines[i].trim();
+      if (!line) continue;
 
-    for (const [foodCode, foodData] of Object.entries(ifctData)) {
-      const food = foodData as any;
+      const values = line.split(',').map(v => v.trim().replace(/"/g, ''));
+      const food: any = {};
       
+      ifctHeaders.forEach((header, index) => {
+        food[header] = values[index] || '';
+      });
+
       // Skip if missing essential data
       if (!food.name || !food.energy) continue;
 
@@ -40,40 +52,40 @@ serve(async (req) => {
           .upsert({
             name: food.name,
             catalog_key: catalogKey,
-            kcal: food.energy || 0,
-            protein_g: food.protein || 0,
-            carbs_g: food.carbohydrate || 0,
-            fat_g: food.fat || 0,
-            fiber_g: food.fiber || null,
-            sugar_g: food.sugars || null,
-            sodium_mg: food.sodium ? food.sodium * 1000 : null, // Convert g to mg
+            kcal: parseFloat(food.energy) || 0,
+            protein_g: parseFloat(food.protein) || 0,
+            carbs_g: parseFloat(food.carbohydrates) || 0,
+            fat_g: parseFloat(food.fat) || 0,
+            fiber_g: parseFloat(food.fiber) || null,
+            sugar_g: parseFloat(food.sugars) || null,
+            sodium_mg: parseFloat(food.sodium) ? parseFloat(food.sodium) * 1000 : null, // Convert g to mg
             confidence_level: 'HIGH',
             data_source: 'IFCT',
             portion_weight_g: 100, // IFCT data is per 100g
-            vitamin_c_mg: food.vitaminC || null,
-            iron_mg: food.iron || null,
-            calcium_mg: food.calcium || null,
+            vitamin_c_mg: parseFloat(food.vitamin_c) || null,
+            iron_mg: parseFloat(food.iron) || null,
+            calcium_mg: parseFloat(food.calcium) || null,
             cuisine: 'Indian',
             default_serving: '100g'
           }, {
             onConflict: 'catalog_key'
           });
 
-        importedCount++;
+        ifctImported++;
         
-        if (importedCount % 50 === 0) {
-          console.log(`Imported ${importedCount} IFCT entries...`);
+        if (ifctImported % 50 === 0) {
+          console.log(`Imported ${ifctImported} IFCT entries...`);
         }
       } catch (error) {
         console.error(`Error importing IFCT food ${food.name}:`, error);
       }
     }
 
-    console.log(`Successfully imported ${importedCount} IFCT 2017 entries`);
+    console.log(`Successfully imported ${ifctImported} IFCT 2017 entries`);
 
-    // Import INDB data (CSV format)
+    // Import INDB data from GitHub raw file
     console.log('Fetching INDB data...');
-    const indbResponse = await fetch('https://raw.githubusercontent.com/lindsayjaacks/Indian-Nutrient-Databank-INDB-/main/data/INDB_version1.csv');
+    const indbResponse = await fetch('https://raw.githubusercontent.com/lindsayjaacks/Indian-Nutrient-Databank-INDB-/main/INDB_version1.csv');
     const indbCsv = await indbResponse.text();
     
     // Parse CSV
@@ -136,8 +148,8 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({
       success: true,
-      message: `Successfully imported ${importedCount} IFCT and ${indbImported} INDB entries`,
-      ifct_count: importedCount,
+      message: `Successfully imported ${ifctImported} IFCT and ${indbImported} INDB entries`,
+      ifct_count: ifctImported,
       indb_count: indbImported
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
