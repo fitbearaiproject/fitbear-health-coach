@@ -84,8 +84,8 @@ serve(async (req) => {
                 id: selectedVoiceId
               },
               output_format: {
-                container: "wav",
-                encoding: "pcm_f32le",
+                container: "mp3",
+                encoding: "mp3",
                 sample_rate: 44100
               },
               language: "en",
@@ -131,7 +131,7 @@ serve(async (req) => {
     });
 
     const headers = new Headers(corsHeaders);
-    headers.set('Content-Type', 'audio/wav');
+    headers.set('Content-Type', 'audio/mpeg');
     headers.set('X-Voice-ID', selectedVoiceId);
     headers.set('X-Request-Id', requestId);
     headers.set('X-Provider', 'Cartesia');

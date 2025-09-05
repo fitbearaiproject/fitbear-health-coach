@@ -312,10 +312,18 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
       streamUrl = `${SUPABASE_URL}/functions/v1/deepgram-tts-stream?text=${encodedText}&voice=aura-2-hermes-en`;
     }
 
-    // GUARDRAIL: Create audio with comprehensive error handling
+    // GUARDRAIL: Create audio with comprehensive error handling and volume boost for Cartesia
     const audio = new Audio();
     let retryCount = 0;
     const maxRetries = 2;
+
+    // Boost volume for Cartesia voice clone (compensate for lower output level)
+    if (selectedVoice === 'clone') {
+      audio.volume = 1.0; // Maximum volume for voice clone
+      console.log('[TTS] Volume boosted to maximum for voice clone');
+    } else {
+      audio.volume = 0.8; // Standard volume for Deepgram
+    }
 
     const setupAudioHandlers = () => {
       audio.onplaying = () => {
