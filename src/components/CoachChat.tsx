@@ -40,6 +40,12 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
   const ttsAbortRef = useRef<AbortController | null>(null);
   const ttsBytesRef = useRef(0);
   const ttsObjectUrlRef = useRef<string | null>(null);
+  
+  // Web Audio API refs for volume amplification
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
+  const compressorRef = useRef<DynamicsCompressorNode | null>(null);
+  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
 
   useEffect(() => {
     scrollToBottom();
@@ -50,6 +56,8 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
     setupSpeechRecognition();
     
     return () => {
+      // Cleanup audio and Web Audio API resources
+      cleanupWebAudio();
       if (currentAudioRef.current) {
         currentAudioRef.current.pause();
       }
@@ -61,6 +69,50 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
       }
     };
   }, [userId]);
+
+  const cleanupWebAudio = () => {
+    console.log('[Web Audio] Cleaning up resources');
+    
+    // Disconnect and clear source node
+    if (sourceNodeRef.current) {
+      try {
+        sourceNodeRef.current.disconnect();
+      } catch (e) {
+        console.warn('[Web Audio] Source disconnect warning:', e);
+      }
+      sourceNodeRef.current = null;
+    }
+    
+    // Clear gain node
+    if (gainNodeRef.current) {
+      try {
+        gainNodeRef.current.disconnect();
+      } catch (e) {
+        console.warn('[Web Audio] Gain disconnect warning:', e);
+      }
+      gainNodeRef.current = null;
+    }
+    
+    // Clear compressor node
+    if (compressorRef.current) {
+      try {
+        compressorRef.current.disconnect();
+      } catch (e) {
+        console.warn('[Web Audio] Compressor disconnect warning:', e);
+      }
+      compressorRef.current = null;
+    }
+    
+    // Close audio context
+    if (audioContextRef.current) {
+      try {
+        audioContextRef.current.close();
+      } catch (e) {
+        console.warn('[Web Audio] Context close warning:', e);
+      }
+      audioContextRef.current = null;
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -257,7 +309,8 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
 
     console.log(`[TTS] Using ${selectedVoice} voice for playback`);
 
-    // GUARDRAIL: Cleanup any ongoing playback to prevent conflicts
+    // GUARDRAIL: Cleanup any ongoing playback and Web Audio nodes to prevent conflicts
+    cleanupWebAudio();
     if (ttsAbortRef.current) {
       ttsAbortRef.current.abort();
       ttsAbortRef.current = null;
@@ -312,18 +365,65 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
       streamUrl = `${SUPABASE_URL}/functions/v1/deepgram-tts-stream?text=${encodedText}&voice=aura-2-hermes-en`;
     }
 
-    // GUARDRAIL: Create audio with comprehensive error handling and volume boost for Cartesia
+    // Create audio element with CORS support
     const audio = new Audio();
+    audio.crossOrigin = "anonymous"; // Enable Web Audio API access
+    audio.preload = 'auto';
     let retryCount = 0;
     const maxRetries = 2;
 
-    // Boost volume for Cartesia voice clone (compensate for lower output level)
-    if (selectedVoice === 'clone') {
-      audio.volume = 1.0; // Maximum volume for voice clone
-      console.log('[TTS] Volume boosted to maximum for voice clone');
-    } else {
-      audio.volume = 0.8; // Standard volume for Deepgram
-    }
+    // Set up Web Audio API for volume amplification (only for voice clone)
+    const setupWebAudioPipeline = async () => {
+      try {
+        // Create AudioContext if needed
+        if (!audioContextRef.current) {
+          audioContextRef.current = new AudioContext();
+          console.log('[Web Audio] Created new AudioContext');
+        }
+
+        // Resume AudioContext if suspended (required by browser autoplay policies)
+        if (audioContextRef.current.state === 'suspended') {
+          await audioContextRef.current.resume();
+          console.log('[Web Audio] Resumed AudioContext');
+        }
+
+        // Create MediaElementAudioSourceNode
+        sourceNodeRef.current = audioContextRef.current.createMediaElementSource(audio);
+        console.log('[Web Audio] Created MediaElementSource');
+
+        // Create DynamicsCompressorNode to prevent clipping at high gain
+        compressorRef.current = audioContextRef.current.createDynamicsCompressor();
+        compressorRef.current.threshold.value = -24; // dB
+        compressorRef.current.knee.value = 30; // dB
+        compressorRef.current.ratio.value = 4; // 4:1 compression
+        compressorRef.current.attack.value = 0.003; // 3ms
+        compressorRef.current.release.value = 0.25; // 250ms
+        console.log('[Web Audio] Created and configured DynamicsCompressor');
+
+        // Create GainNode for volume amplification
+        gainNodeRef.current = audioContextRef.current.createGain();
+        
+        if (selectedVoice === 'clone') {
+          gainNodeRef.current.gain.value = 2.0; // 100% louder (2x amplification)
+          console.log('[Web Audio] Set gain to 2.0 (100% boost) for voice clone');
+        } else {
+          gainNodeRef.current.gain.value = 1.0; // Normal volume for Hermes
+          console.log('[Web Audio] Set gain to 1.0 (normal) for Hermes voice');
+        }
+
+        // Connect the audio pipeline: source -> compressor -> gain -> destination
+        sourceNodeRef.current.connect(compressorRef.current);
+        compressorRef.current.connect(gainNodeRef.current);
+        gainNodeRef.current.connect(audioContextRef.current.destination);
+        
+        console.log('[Web Audio] Connected pipeline: source -> compressor -> gain -> destination');
+
+      } catch (error) {
+        console.error('[Web Audio] Failed to setup pipeline:', error);
+        // Fallback to regular audio playback without amplification
+        throw error;
+      }
+    };
 
     const setupAudioHandlers = () => {
       audio.onplaying = () => {
@@ -331,13 +431,23 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
         setIsPlaying(true);
       };
       
-      audio.oncanplay = () => {
+      audio.oncanplay = async () => {
         console.log('[TTS] Audio can play');
+        
+        // Set up Web Audio pipeline for voice clone amplification
+        if (selectedVoice === 'clone') {
+          try {
+            await setupWebAudioPipeline();
+          } catch (error) {
+            console.warn('[Web Audio] Pipeline setup failed, using standard playback:', error);
+          }
+        }
       };
       
       audio.onended = () => {
         console.log('[TTS] Audio ended');
         setIsPlaying(false);
+        cleanupWebAudio();
         if (currentAudioRef.current === audio) {
           currentAudioRef.current = null;
         }
@@ -346,6 +456,7 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
       audio.onerror = (e) => {
         console.error('[TTS] Audio error:', e);
         setIsPlaying(false);
+        cleanupWebAudio();
         if (currentAudioRef.current === audio) {
           currentAudioRef.current = null;
         }
@@ -375,14 +486,26 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
       
       audio.onwaiting = () => console.log('[TTS] Audio waiting for data');
       
-      audio.onabort = () => console.log('[TTS] Audio aborted');
+      audio.onabort = () => {
+        console.log('[TTS] Audio aborted');
+        cleanupWebAudio();
+      };
       
-      audio.onemptied = () => console.log('[TTS] Audio emptied');
+      audio.onemptied = () => {
+        console.log('[TTS] Audio emptied');
+        cleanupWebAudio();
+      };
     };
 
     setupAudioHandlers();
     audio.src = streamUrl;
-    audio.preload = 'auto';
+    
+    // Set volume (this will be further amplified by GainNode for voice clone)
+    if (selectedVoice === 'clone') {
+      audio.volume = 1.0; // Max volume + GainNode amplification
+    } else {
+      audio.volume = 0.8; // Standard volume for Hermes
+    }
     
     // GUARDRAIL: Set reference before any async operations
     currentAudioRef.current = audio;
@@ -400,6 +523,7 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
     } catch (e) {
       console.error('[TTS] Autoplay/playback error:', e);
       setIsPlaying(false);
+      cleanupWebAudio();
       
       // GUARDRAIL: Clean up failed audio attempt
       if (currentAudioRef.current === audio) {
@@ -411,7 +535,9 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
   const stopAudio = () => {
     console.log('[TTS] Stop audio requested');
     
-    // GUARDRAIL: Robust cleanup with error handling
+    // GUARDRAIL: Robust cleanup with error handling including Web Audio API
+    cleanupWebAudio();
+    
     if (ttsAbortRef.current) {
       try {
         ttsAbortRef.current.abort();
