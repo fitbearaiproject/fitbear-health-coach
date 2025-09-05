@@ -115,43 +115,82 @@ export type Database = {
       }
       dish_catalog: {
         Row: {
+          calcium_mg: number | null
           carbs_g: number | null
           catalog_key: string
+          confidence_level: string | null
           created_at: string | null
           cuisine: string | null
+          data_source: string | null
           default_serving: string | null
           fat_g: number | null
+          fiber_g: number | null
+          folate_mcg: number | null
           id: string
+          iron_mg: number | null
           kcal: number | null
+          last_verified: string | null
           name: string
+          portion_weight_g: number | null
           protein_g: number | null
+          sodium_mg: number | null
+          sugar_g: number | null
           tags: Json | null
+          usda_fdc_id: number | null
+          vitamin_c_mg: number | null
+          vitamin_d_mcg: number | null
         }
         Insert: {
+          calcium_mg?: number | null
           carbs_g?: number | null
           catalog_key: string
+          confidence_level?: string | null
           created_at?: string | null
           cuisine?: string | null
+          data_source?: string | null
           default_serving?: string | null
           fat_g?: number | null
+          fiber_g?: number | null
+          folate_mcg?: number | null
           id?: string
+          iron_mg?: number | null
           kcal?: number | null
+          last_verified?: string | null
           name: string
+          portion_weight_g?: number | null
           protein_g?: number | null
+          sodium_mg?: number | null
+          sugar_g?: number | null
           tags?: Json | null
+          usda_fdc_id?: number | null
+          vitamin_c_mg?: number | null
+          vitamin_d_mcg?: number | null
         }
         Update: {
+          calcium_mg?: number | null
           carbs_g?: number | null
           catalog_key?: string
+          confidence_level?: string | null
           created_at?: string | null
           cuisine?: string | null
+          data_source?: string | null
           default_serving?: string | null
           fat_g?: number | null
+          fiber_g?: number | null
+          folate_mcg?: number | null
           id?: string
+          iron_mg?: number | null
           kcal?: number | null
+          last_verified?: string | null
           name?: string
+          portion_weight_g?: number | null
           protein_g?: number | null
+          sodium_mg?: number | null
+          sugar_g?: number | null
           tags?: Json | null
+          usda_fdc_id?: number | null
+          vitamin_c_mg?: number | null
+          vitamin_d_mcg?: number | null
         }
         Relationships: []
       }
