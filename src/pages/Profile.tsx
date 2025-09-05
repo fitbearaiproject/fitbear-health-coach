@@ -414,7 +414,7 @@ export default function Profile() {
                 Saving Profile...
               </> : <>
                 <Target className="h-4 w-4 mr-2" />
-                Save BPS Profile
+                Save Profile
               </>}
           </Button>
         </div>
