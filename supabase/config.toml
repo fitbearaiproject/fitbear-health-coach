@@ -12,6 +12,9 @@ verify_jwt = false
 [functions.deepgram-tts-stream]
 verify_jwt = false
 
+[functions.cartesia-tts-stream]
+verify_jwt = false
+
 [functions.menu-parse]
 verify_jwt = false
 

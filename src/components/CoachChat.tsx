@@ -6,9 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Send, Mic, MicOff, Volume2, VolumeX, MessageCircle, Loader2 } from "lucide-react";
+import { Send, Mic, MicOff, Volume2, VolumeX, MessageCircle, Loader2, User } from "lucide-react";
 
 interface Message {
   id: string;
@@ -28,6 +29,9 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
   const [isListening, setIsListening] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(true);
+  const [selectedVoice, setSelectedVoice] = useState<'hermes' | 'clone'>(() => {
+    return (localStorage.getItem('coach-voice') as 'hermes' | 'clone') || 'hermes';
+  });
   const { toast } = useToast();
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -251,6 +255,8 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
 
     const SUPABASE_URL = "https://xnncvfuamecmjvvoaywz.supabase.co";
 
+    console.log(`[TTS] Using ${selectedVoice} voice for playback`);
+
     // GUARDRAIL: Cleanup any ongoing playback to prevent conflicts
     if (ttsAbortRef.current) {
       ttsAbortRef.current.abort();
@@ -298,7 +304,13 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
       return;
     }
 
-    const streamUrl = `${SUPABASE_URL}/functions/v1/deepgram-tts-stream?text=${encodedText}&voice=aura-2-hermes-en`;
+    // Choose the appropriate TTS service based on selected voice
+    let streamUrl: string;
+    if (selectedVoice === 'clone') {
+      streamUrl = `${SUPABASE_URL}/functions/v1/cartesia-tts-stream?text=${encodedText}&voice_id=bc6b3ad8-7a84-47e2-b655-4a087d2f8c4d`;
+    } else {
+      streamUrl = `${SUPABASE_URL}/functions/v1/deepgram-tts-stream?text=${encodedText}&voice=aura-2-hermes-en`;
+    }
 
     // GUARDRAIL: Create audio with comprehensive error handling
     const audio = new Audio();
@@ -425,6 +437,15 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
     console.log('[TTS] Audio stopped and cleaned up');
   };
 
+  const handleVoiceChange = (voice: 'hermes' | 'clone') => {
+    setSelectedVoice(voice);
+    localStorage.setItem('coach-voice', voice);
+    toast({
+      title: "Voice Changed",
+      description: `Switched to ${voice === 'clone' ? 'Your Voice Clone' : 'Hermes Default'} voice`,
+    });
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -457,20 +478,43 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
                 {isPlaying && <Badge variant="outline" className="text-xs">🔊 Speaking</Badge>}
               </div>
             </div>
-            <div className="flex gap-2">
-              <Button
-                variant={autoSpeak ? "default" : "outline"}
-                size="sm"
-                onClick={() => setAutoSpeak(!autoSpeak)}
-                className="hidden md:flex"
-              >
-                {autoSpeak ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-              </Button>
-              {isPlaying && (
-                <Button variant="outline" size="sm" onClick={stopAudio}>
-                  Stop
+            <div className="flex flex-col gap-2 md:flex-row">
+              {/* Voice Selection */}
+              <Select value={selectedVoice} onValueChange={handleVoiceChange}>
+                <SelectTrigger className="w-40 h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hermes" className="text-xs">
+                    <div className="flex items-center gap-2">
+                      <Volume2 className="h-3 w-3" />
+                      Hermes (Default)
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="clone" className="text-xs">
+                    <div className="flex items-center gap-2">
+                      <User className="h-3 w-3" />
+                      Your Voice Clone
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <div className="flex gap-2">
+                <Button
+                  variant={autoSpeak ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setAutoSpeak(!autoSpeak)}
+                  className="hidden md:flex"
+                >
+                  {autoSpeak ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
                 </Button>
-              )}
+                {isPlaying && (
+                  <Button variant="outline" size="sm" onClick={stopAudio}>
+                    Stop
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </CardHeader>
