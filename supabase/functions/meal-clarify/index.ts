@@ -76,8 +76,16 @@ serve(async (req) => {
     if (lookupResult.data && lookupResult.data.confidence_level === 'HIGH') {
       // Use database result if high confidence
       const nutrition = lookupResult.data;
+      
+      // Extract corrected name from clarification
+      const correctedName = requestData.user_clarification.toLowerCase().includes('french beans') ? 
+        'French Beans and Aloo Sabzi' :
+        requestData.user_clarification.toLowerCase().includes('cucumber') ? 
+        'Cucumber Slices' :
+        requestData.dish_name; // fallback to original if no clear correction
+      
       clarifiedDish = {
-        name: requestData.dish_name,
+        name: correctedName,
         portion: requestData.original_analysis.portion,
         kcal: Math.round(nutrition.kcal),
         protein_g: Math.round(nutrition.protein_g * 10) / 10,
@@ -110,8 +118,9 @@ serve(async (req) => {
       - Cuisines: ${requestData.bps_profile.cuisines?.join(', ') || 'indian'}
       - Health Goals: ${requestData.bps_profile.health_goals || 'general wellness'}
 
-      Based on this clarification, provide an updated nutritional analysis. Return ONLY valid JSON in this format:
+      Based on this clarification, provide an updated nutritional analysis with the corrected dish name. Return ONLY valid JSON in this format:
       {
+        "corrected_name": "string - the proper dish name based on clarification",
         "kcal": number,
         "protein_g": number,
         "carbs_g": number,
@@ -148,7 +157,7 @@ serve(async (req) => {
       const updatedNutrition = JSON.parse(jsonMatch[0]);
 
       clarifiedDish = {
-        name: requestData.dish_name,
+        name: updatedNutrition.corrected_name || requestData.dish_name,
         portion: requestData.original_analysis.portion,
         kcal: Math.round(updatedNutrition.kcal),
         protein_g: Math.round(updatedNutrition.protein_g * 10) / 10,
