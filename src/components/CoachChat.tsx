@@ -259,7 +259,11 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
     ttsAbortRef.current = ctrl;
 
     const clean = sanitizeForTTS(text);
-    
+    console.log('[TTS] start', { len: clean.length });
+
+    // Show speaking state while we fetch/generate audio (will revert on error)
+    setIsPlaying(true);
+
     // Use entire text block for continuous playback
     let cancelled = false;
 
