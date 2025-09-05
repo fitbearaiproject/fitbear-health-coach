@@ -51,7 +51,7 @@ serve(async (req) => {
       );
     }
 
-    const voiceModel = (voice && typeof voice === 'string') ? voice : 'aura-2-hermes-en';
+    const voiceModel = (voice && typeof voice === 'string') ? voice : 'aura-2-thalia-en';
     const cleanText = sanitize(text);
 
     const query = new URLSearchParams({
