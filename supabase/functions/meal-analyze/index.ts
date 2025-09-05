@@ -27,6 +27,22 @@ interface MealAnalyzeRequest {
   targets: Targets;
 }
 
+interface DetectedDish {
+  name: string;
+  portion: string;
+  description: string;
+  coach_note: string;
+  flags: string[];
+  confidence: number;
+  portion_multiplier: number;
+}
+
+interface VisionResponse {
+  dishes: DetectedDish[];
+  overall_note: string;
+  model_confidence: number;
+}
+
 interface MealDish {
   name: string;
   portion: string;
@@ -39,6 +55,8 @@ interface MealDish {
   description: string;
   coach_note: string;
   flags: string[];
+  confidence_level?: string;
+  data_source?: string;
 }
 
 interface MealAnalyzeResponse {
@@ -52,6 +70,11 @@ interface MealAnalyzeResponse {
     sugar_g: number;
   };
   overall_note?: string;
+  confidence_summary?: {
+    high_confidence_dishes: number;
+    medium_confidence_dishes: number;
+    low_confidence_dishes: number;
+  };
 }
 
 const corsHeaders = {
@@ -128,6 +151,27 @@ async function checkForDuplicates(supabase: any, userId: string, totalKcal: numb
   } catch (error) {
     console.log('Duplicate check failed, proceeding:', error.message);
     return false;
+  }
+}
+
+async function lookupNutrition(supabase: any, dishName: string, cuisine?: string) {
+  try {
+    const response = await supabase.functions.invoke('nutrition-lookup', {
+      body: { 
+        dish_name: dishName,
+        cuisine: cuisine 
+      }
+    });
+
+    if (response.error) {
+      console.warn(`Nutrition lookup failed for ${dishName}:`, response.error);
+      return null;
+    }
+
+    return response.data;
+  } catch (error) {
+    console.warn(`Nutrition lookup error for ${dishName}:`, error);
+    return null;
   }
 }
 
@@ -242,56 +286,44 @@ Carbs: ${targets.carbs_g || 'Not set'}g
 Fat: ${targets.fat_g || 'Not set'}g
 Fiber: ${targets.fiber_g || 'Not set'}g`;
 
-const systemPrompt = `You are the Meal Scanner powered by Coach C — guiding through a Bio-Psycho-Social lens, combining body nutrition needs, mindset awareness, and lifestyle-friendly habits. You have deep knowledge of Indian, South Asian, and global homemade food. Your job is to accurately recognize dishes from an image (inline_data), estimate portions and macros, and favor contextual nuance over blind certainty.
+const systemPrompt = `You are the Meal Scanner powered by Coach C — guiding through a Bio-Psycho-Social lens, combining body nutrition needs, mindset awareness, and lifestyle-friendly habits. You have deep knowledge of Indian, South Asian, and global homemade food. 
 
-**Low-Confidence Clarification Logic:**
-- If image quality is poor, lighting inadequate, or dishes are unclear/ambiguous, set confidence < 0.7
-- If portions are impossible to estimate reliably from image, add to uncertain_reasons
-- If dish recognition is doubtful (could be multiple things), add specific uncertain_reasons
-- When confidence is low, be conservative with macro estimates and clearly flag uncertainties
-- If user provides clarification text, use it to refine your analysis and improve confidence
+IMPORTANT: Your job is ONLY to:
+1. Recognize dish names from the image
+2. Estimate portion sizes using visual cues and Indian household units
+3. Provide descriptions and coach notes
+4. DO NOT fabricate nutrition values - they will be looked up from authoritative sources
 
-Core directives:
+**Core directives:**
 
-1. Use both visual detection cues and household unit heuristics (katori, roti dia, ladle), supported by knowledge of cooking styles (tempering, stewing, frying).
-2. Account for:
-   - Invisible ingredients (oil, ghee, water loss during cooking).
-   - Regional dish variations (“Indori Poha” vs “Kanda Poha”)—when uncertain, flag them and ask follow-up.
-3. If detecting portion size from image is unreliable:
-   - Indicate estimated grams based on typical bowl or plate size.
-   - Offer to let user adjust with a clarifier prompt (“Can you estimate how many rotis or bowls?”).
-4. Ingredients inference: If dish shows visible vegetables, pulses, or main components, name them (e.g. “dal, aloo, spinach”). If unclear, ask a clarifying question.
-5. Macro estimation should be a range or approximation—e.g., “Dal Tadka (~1 katori): kcal 180–200; protein_g 6–8; carbs_g 20–24; fat_g 6–8; fiber_g 3–4.”
-6. Explicitly mention error margin (±10–15%) based on visual uncertainty.
-7. Always respect user’s diet type (veg, non-veg, pescatarian) and health conditions — e.g., use low sodium if user has BP.
+1. **Dish Recognition**: Identify specific dish names with high accuracy. Use both visual detection and knowledge of Indian cooking styles.
+2. **Portion Estimation**: Use household unit heuristics (katori, roti diameter, ladle size) and visual context to estimate portions.
+3. **Regional Variations**: When uncertain between variations (e.g., "Indori Poha" vs "Kanda Poha"), specify the most likely type based on visual cues.
+4. **Visual Quality Assessment**: If image quality is poor or dishes are unclear, indicate uncertainty in your confidence score.
+
+**Low-Confidence Scenarios:**
+- Poor image quality, lighting, or blurry dishes
+- Ambiguous dishes that could be multiple things
+- Portions impossible to estimate reliably from the image
+- When uncertain, be honest and flag it for user clarification
 
 ${userContext}
 
-Output format (strict): Return ONLY valid JSON with this schema (adapted to the app’s expected contract):
+**CRITICAL**: Do not include kcal, protein_g, carbs_g, fat_g, fiber_g, or sugar_g in your response. These will be populated from authoritative nutrition databases.
+
+Output format (strict): Return ONLY valid JSON with this schema:
 {
   "dishes": [
     {
-      "name": "string",
-      "portion": "string (use Indian units; include grams estimate in parentheses if needed)",
-      "kcal": number,
-      "protein_g": number,
-      "carbs_g": number,
-      "fat_g": number,
-      "fiber_g": number|null,
-      "sugar_g": number|null,
-      "description": "string",
-      "coach_note": "string (include error margin ±10–15% if relevant)",
-      "flags": ["string", ...]
+      "name": "string (specific dish name for nutrition lookup)",
+      "portion": "string (use Indian units; include grams estimate in parentheses)",
+      "description": "string (what you see in the image)",
+      "coach_note": "string (dietary advice based on user profile)",
+      "flags": ["string", ...],
+      "confidence": number,
+      "portion_multiplier": number
     }
   ],
-  "summary": {
-    "total_kcal": number,
-    "protein_g": number,
-    "carbs_g": number,
-    "fat_g": number,
-    "fiber_g": number|null,
-    "sugar_g": number|null
-  },
   "overall_note": "string",
   "model_confidence": number
 }`;
@@ -321,7 +353,7 @@ Output format (strict): Return ONLY valid JSON with this schema (adapted to the 
       throw new Error(`Failed to process image: ${error.message}`);
     }
 
-    // Call Gemini API with proper format and retry logic
+    // Call Gemini API for dish recognition and portion estimation only
     const geminiResponse = await retryApiCall(async () => {
       return await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${googleApiKey}`, {
         method: 'POST',
@@ -403,20 +435,16 @@ Output format (strict): Return ONLY valid JSON with this schema (adapted to the 
     }
     
     // Parse JSON response with robust error handling
-    let parsedData: MealAnalyzeResponse;
+    let visionData: VisionResponse;
     let jsonParseOk = true;
     
     try {
       // Try parsing as direct JSON first
-      parsedData = JSON.parse(rawResponse);
+      visionData = JSON.parse(rawResponse);
       
       // Validate response structure
-      if (!parsedData.dishes || !Array.isArray(parsedData.dishes)) {
+      if (!visionData.dishes || !Array.isArray(visionData.dishes)) {
         throw new Error('Invalid response structure: dishes array required');
-      }
-      
-      if (!parsedData.summary || typeof parsedData.summary !== 'object') {
-        throw new Error('Invalid response structure: summary object required');
       }
       
     } catch (parseError) {
@@ -429,7 +457,7 @@ Output format (strict): Return ONLY valid JSON with this schema (adapted to the 
       if (jsonMatch) {
         try {
           const jsonString = jsonMatch[1] || jsonMatch[0];
-          parsedData = JSON.parse(jsonString);
+          visionData = JSON.parse(jsonString);
           jsonParseOk = true;
         } catch (secondParseError) {
           // Return error with model text for debugging
@@ -464,18 +492,97 @@ Output format (strict): Return ONLY valid JSON with this schema (adapted to the 
       }
     }
 
-    // Optional: Check for potential duplicates
+    // Initialize Supabase client for nutrition lookup
     const supabase = createClient(supabaseUrl, supabaseServiceRole);
 
-    // Extract user_id from auth header if available for duplicate checking
+    // Lookup nutrition data for each detected dish
+    const enrichedDishes: MealDish[] = [];
+    let highConfidenceCount = 0;
+    let mediumConfidenceCount = 0;
+    let lowConfidenceCount = 0;
+
+    console.log(`Looking up nutrition for ${visionData.dishes.length} detected dishes`);
+
+    for (const detectedDish of visionData.dishes) {
+      console.log(`Processing dish: ${detectedDish.name}`);
+      
+      const nutritionData = await lookupNutrition(
+        supabase, 
+        detectedDish.name, 
+        bps_profile.cuisines?.[0]
+      );
+
+      if (nutritionData) {
+        // Apply portion multiplier to scale nutrition values
+        const multiplier = detectedDish.portion_multiplier || 1;
+        
+        const enrichedDish: MealDish = {
+          name: detectedDish.name,
+          portion: detectedDish.portion,
+          kcal: Math.round((nutritionData.kcal || 0) * multiplier),
+          protein_g: Math.round((nutritionData.protein_g || 0) * multiplier * 10) / 10,
+          carbs_g: Math.round((nutritionData.carbs_g || 0) * multiplier * 10) / 10,
+          fat_g: Math.round((nutritionData.fat_g || 0) * multiplier * 10) / 10,
+          fiber_g: nutritionData.fiber_g ? Math.round(nutritionData.fiber_g * multiplier * 10) / 10 : 0,
+          sugar_g: nutritionData.sugar_g ? Math.round(nutritionData.sugar_g * multiplier * 10) / 10 : 0,
+          description: detectedDish.description,
+          coach_note: detectedDish.coach_note + (nutritionData.confidence_level === 'HIGH' ? '' : ' (Note: Nutrition data has medium/low confidence)'),
+          flags: detectedDish.flags,
+          confidence_level: nutritionData.confidence_level,
+          data_source: nutritionData.data_source
+        };
+
+        enrichedDishes.push(enrichedDish);
+
+        // Count confidence levels
+        if (nutritionData.confidence_level === 'HIGH') highConfidenceCount++;
+        else if (nutritionData.confidence_level === 'MEDIUM') mediumConfidenceCount++;
+        else lowConfidenceCount++;
+
+        console.log(`✓ Enriched ${detectedDish.name} with ${nutritionData.confidence_level} confidence from ${nutritionData.data_source}`);
+      } else {
+        // Fallback with conservative estimates
+        const enrichedDish: MealDish = {
+          name: detectedDish.name,
+          portion: detectedDish.portion,
+          kcal: 200,
+          protein_g: 10,
+          carbs_g: 20,
+          fat_g: 8,
+          fiber_g: 3,
+          sugar_g: 5,
+          description: detectedDish.description,
+          coach_note: detectedDish.coach_note + ' (Note: Nutrition data estimated - please verify)',
+          flags: [...detectedDish.flags, 'estimated'],
+          confidence_level: 'LOW',
+          data_source: 'AI_ESTIMATED'
+        };
+
+        enrichedDishes.push(enrichedDish);
+        lowConfidenceCount++;
+        console.log(`⚠️ Using fallback estimates for ${detectedDish.name}`);
+      }
+    }
+
+    // Calculate summary totals
+    const summary = {
+      total_kcal: enrichedDishes.reduce((sum, dish) => sum + dish.kcal, 0),
+      protein_g: Math.round(enrichedDishes.reduce((sum, dish) => sum + dish.protein_g, 0) * 10) / 10,
+      carbs_g: Math.round(enrichedDishes.reduce((sum, dish) => sum + dish.carbs_g, 0) * 10) / 10,
+      fat_g: Math.round(enrichedDishes.reduce((sum, dish) => sum + dish.fat_g, 0) * 10) / 10,
+      fiber_g: Math.round(enrichedDishes.reduce((sum, dish) => sum + dish.fiber_g, 0) * 10) / 10,
+      sugar_g: Math.round(enrichedDishes.reduce((sum, dish) => sum + dish.sugar_g, 0) * 10) / 10,
+    };
+
+    // Optional: Check for potential duplicates
     const authHeader = req.headers.get('authorization');
     let isDuplicate = false;
     
-    if (authHeader && parsedData.summary?.total_kcal) {
+    if (authHeader && summary.total_kcal) {
       try {
         // This is a simplified approach - in production you'd validate the JWT
         const userId = 'extracted_from_jwt'; // Placeholder
-        // isDuplicate = await checkForDuplicates(supabase, userId, parsedData.summary.total_kcal);
+        // isDuplicate = await checkForDuplicates(supabase, userId, summary.total_kcal);
       } catch (error) {
         console.log('Duplicate check skipped:', error.message);
       }
@@ -483,53 +590,47 @@ Output format (strict): Return ONLY valid JSON with this schema (adapted to the 
 
     const latencyMs = Date.now() - startTime;
 
+    const responseData: MealAnalyzeResponse = {
+      dishes: enrichedDishes,
+      summary: summary,
+      overall_note: visionData.overall_note,
+      confidence_summary: {
+        high_confidence_dishes: highConfidenceCount,
+        medium_confidence_dishes: mediumConfidenceCount,
+        low_confidence_dishes: lowConfidenceCount
+      }
+    };
+
+    console.log(`✅ Meal analysis complete: ${enrichedDishes.length} dishes, ${highConfidenceCount} high confidence, ${mediumConfidenceCount} medium, ${lowConfidenceCount} low`);
+
     return new Response(
       JSON.stringify({ 
         request_id: requestId,
         status: 'success',
         latency_ms: latencyMs,
-        model: 'gemini-2.0-flash',
+        model: 'gemini-2.0-flash + authoritative-nutrition',
         image_px: imagePx,
         json_parse_ok: jsonParseOk,
         duplicate_warning: isDuplicate,
-        analysis: parsedData
+        analysis: responseData
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    console.error('Error in meal-analyze function:', error);
+    console.error('Meal analysis error:', error);
     const latencyMs = Date.now() - startTime;
-    
-    // Classify error types
-    let errorClass = 'Logic';
-    let statusCode = 500;
-    
-    if (error.message.includes('API key') || error.message.includes('auth')) {
-      errorClass = 'Auth';
-      statusCode = 401;
-    } else if (error.message.includes('rate limit') || error.message.includes('429')) {
-      errorClass = 'RateLimit';
-      statusCode = 429;
-    } else if (error.message.includes('network') || error.message.includes('fetch') || 
-               error.message.includes('temporarily unavailable')) {
-      errorClass = 'Network';
-      statusCode = 503;
-    } else if (error.message.includes('timeout')) {
-      errorClass = 'Network';
-      statusCode = 408;
-    }
-    
+
     return new Response(
       JSON.stringify({ 
         error: error.message,
         request_id: requestId,
-        latency_ms: latencyMs,
-        error_class: errorClass
+        error_class: 'Internal',
+        latency_ms: latencyMs
       }),
-      {
-        status: statusCode,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
   }

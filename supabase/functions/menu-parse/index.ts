@@ -27,31 +27,24 @@ interface MenuParseRequest {
   targets: Targets;
 }
 
-interface MenuItem {
+interface DetectedMenuItem {
   name: string;
   portion: string;
-  kcal: number;
-  macros: {
-    protein_g: number;
-    carbs_g: number;
-    fat_g: number;
-    fiber_g: number;
-  };
   description: string;
   coach_note: string;
-  vitamins: string[];
-  minerals: string[];
   tags: string[];
   bucket: "Top Picks" | "Alternates" | "To Avoid";
+  confidence: number;
+  reasoning: string;
 }
 
-interface MenuParseResponse {
-  items: MenuItem[];
+interface VisionMenuResponse {
+  items: DetectedMenuItem[];
   reasoning: string;
   overall_note?: string;
+  model_confidence: number;
 }
 
-// UI format interfaces
 interface DishItem {
   name: string;
   portion: string;
@@ -64,6 +57,8 @@ interface DishItem {
   coach_note: string;
   tags: string[];
   reasoning: string;
+  confidence_level?: string;
+  data_source?: string;
 }
 
 interface MenuAnalysis {
@@ -72,6 +67,11 @@ interface MenuAnalysis {
   to_avoid: DishItem[];
   general_notes: string;
   overall_note?: string;
+  confidence_summary?: {
+    high_confidence_dishes: number;
+    medium_confidence_dishes: number;
+    low_confidence_dishes: number;
+  };
 }
 
 const corsHeaders = {
@@ -126,6 +126,27 @@ async function retryApiCall(fn: () => Promise<Response>, maxRetries = 1): Promis
   }
   
   throw lastError;
+}
+
+async function lookupNutrition(supabase: any, dishName: string, cuisine?: string) {
+  try {
+    const response = await supabase.functions.invoke('nutrition-lookup', {
+      body: { 
+        dish_name: dishName,
+        cuisine: cuisine 
+      }
+    });
+
+    if (response.error) {
+      console.warn(`Nutrition lookup failed for ${dishName}:`, response.error);
+      return null;
+    }
+
+    return response.data;
+  } catch (error) {
+    console.warn(`Nutrition lookup error for ${dishName}:`, error);
+    return null;
+  }
 }
 
 serve(async (req) => {
@@ -239,38 +260,50 @@ Carbs: ${targets.carbs_g || 'Not set'}g
 Fat: ${targets.fat_g || 'Not set'}g
 Fiber: ${targets.fiber_g || 'Not set'}g`;
 
-const systemPrompt = `You are the Menu Scanner for Fitbear AI, a nutrition assistant with deep expertise in Indian, South Asian, and global cuisine. Use vision + food knowledge to analyze a restaurant menu image (inline_data). Your goal: segment and categorize dishes into Top Picks / Alternates / To Avoid with accurate portion, calories, and macros.
+const systemPrompt = `You are the Menu Scanner for Fitbear AI, a nutrition assistant with deep expertise in Indian, South Asian, and global cuisine. Use vision + food knowledge to analyze a restaurant menu image (inline_data). Your goal: segment and categorize dishes into Top Picks / Alternates / To Avoid with accurate recommendations.
 
-Guidelines:
+IMPORTANT: Your job is ONLY to:
+1. Recognize dish names from the menu image
+2. Estimate typical restaurant portions for each dish
+3. Categorize dishes based on user's health profile
+4. Provide coach notes and reasoning
+5. DO NOT fabricate nutrition values - they will be looked up from authoritative sources
 
-1. Be cautious — Indian menus often lack clear portions or hide cooking fats. If uncertain, include “uncertain_reasons” and use error_margin (±10–15%).
-2. Use familiar Indian serving units: katori (150 ml), roti diameter (cm), pieces, scoops, small/medium/large.
-3. Estimate macros per portion: kcal, protein_g, carbs_g, fat_g, fiber_g (nullable).
-4. Tag items based on diet type, health profile (e.g., high-protein, high-sodium, fried).
-5. Respect user profile: dietary preference, allergies, conditions (like diabetes / BP).
-6. Provide a short rationale for each bucket placement, e.g., “High-protein dal aligns with diabetic-friendly low-carb goal.”
+**Guidelines:**
+
+1. **Dish Recognition**: Parse menu text and identify specific dish names with high accuracy.
+2. **Portion Awareness**: Estimate typical restaurant serving sizes using Indian units (katori, pieces, plates).
+3. **Health-Based Categorization**: 
+   - **Top Picks**: Align with user's diet type, health goals, and nutritional needs
+   - **Alternates**: Moderate choices that can work with modifications
+   - **To Avoid**: High in allergens, conflicts with health conditions, or poor nutritional profile
+4. **Respect User Profile**: Consider dietary preferences, allergies, health conditions, and goals.
+
+**Low-Confidence Scenarios:**
+- Poor image quality or unreadable menu text
+- Ambiguous dish names or unfamiliar cuisine
+- When uncertain about ingredients or preparation methods
 
 ${userContext}
 
-Output JSON (strict, compatible with app):
+**CRITICAL**: Do not include kcal, protein_g, carbs_g, fat_g, fiber_g, or sugar_g in your response. These will be populated from authoritative nutrition databases.
+
+Output format (strict): Return ONLY valid JSON with this schema:
 {
   "items": [
     {
-      "name": "string",
-      "portion": "string (use Indian units; include grams in parentheses if helpful)",
-      "kcal": number,
-      "macros": { "protein_g": number, "carbs_g": number, "fat_g": number, "fiber_g": number|null },
-      "description": "string",
-      "coach_note": "string",
+      "name": "string (specific dish name for nutrition lookup)",
+      "portion": "string (typical restaurant serving size)",
+      "description": "string (menu description or visual details)",
+      "coach_note": "string (why this fits user's profile)",
       "tags": ["string", ...],
       "bucket": "Top Picks" | "Alternates" | "To Avoid",
       "confidence": number,
-      "error_margin_percent": number,
-      "uncertain_reasons": ["string", ...]
+      "reasoning": "string (brief rationale for bucket placement)"
     }
   ],
-  "reasoning": "string",
-  "overall_note": "string",
+  "reasoning": "string (overall menu analysis strategy)",
+  "overall_note": "string (general advice for this restaurant/menu)",
   "model_confidence": number
 }`;
 
@@ -305,7 +338,7 @@ Output JSON (strict, compatible with app):
       throw new Error(`Failed to process image: ${error.message}`);
     }
 
-    // Call Gemini API with proper format and retry logic
+    // Call Gemini API for menu recognition and categorization only
     const geminiResponse = await retryApiCall(async () => {
       return await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${googleApiKey}`, {
         method: 'POST',
@@ -387,15 +420,15 @@ Output JSON (strict, compatible with app):
     }
     
     // Parse JSON response with robust error handling
-    let parsedData: MenuParseResponse;
+    let visionData: VisionMenuResponse;
     let jsonParseOk = true;
     
     try {
       // Try parsing as direct JSON first
-      parsedData = JSON.parse(rawResponse);
+      visionData = JSON.parse(rawResponse);
       
       // Validate response structure
-      if (!parsedData.items || !Array.isArray(parsedData.items)) {
+      if (!visionData.items || !Array.isArray(visionData.items)) {
         throw new Error('Invalid response structure: items array required');
       }
       
@@ -409,7 +442,7 @@ Output JSON (strict, compatible with app):
       if (jsonMatch) {
         try {
           const jsonString = jsonMatch[1] || jsonMatch[0];
-          parsedData = JSON.parse(jsonString);
+          visionData = JSON.parse(jsonString);
           jsonParseOk = true;
         } catch (secondParseError) {
           // Return error with model text for debugging
@@ -444,30 +477,81 @@ Output JSON (strict, compatible with app):
       }
     }
 
-    // Transform to UI format
+    // Initialize Supabase client for nutrition lookup
+    const supabase = createClient(supabaseUrl, supabaseServiceRole);
+
+    // Transform to UI format with nutrition lookup
     const analysis: MenuAnalysis = {
       top_picks: [],
       alternates: [],
       to_avoid: [],
-      general_notes: parsedData.reasoning || ''
+      general_notes: visionData.reasoning || ''
     };
 
-    // Categorize items by bucket
-    parsedData.items.forEach(item => {
-      const dishItem: DishItem = {
-        name: item.name,
-        portion: typeof (item as any).portion === 'string' ? (item as any).portion : ((item as any).portion?.display ?? ''),
-        kcal: item.kcal,
-        protein_g: item.macros.protein_g,
-        carbs_g: item.macros.carbs_g,
-        fat_g: item.macros.fat_g,
-        fiber_g: item.macros.fiber_g || 0,
-        description: (item as any).description || '',
-        coach_note: (item as any).coach_note || '',
-        tags: item.tags,
-        reasoning: `${(item as any).vitamins?.join(', ') || ''} | ${(item as any).minerals?.join(', ') || ''}`
-      };
+    let highConfidenceCount = 0;
+    let mediumConfidenceCount = 0;
+    let lowConfidenceCount = 0;
 
+    console.log(`Looking up nutrition for ${visionData.items.length} menu items`);
+
+    // Categorize items by bucket and enrich with nutrition data
+    for (const item of visionData.items) {
+      console.log(`Processing menu item: ${item.name}`);
+      
+      const nutritionData = await lookupNutrition(
+        supabase, 
+        item.name, 
+        bps_profile.cuisines?.[0]
+      );
+
+      let dishItem: DishItem;
+
+      if (nutritionData) {
+        dishItem = {
+          name: item.name,
+          portion: item.portion,
+          kcal: nutritionData.kcal || 0,
+          protein_g: nutritionData.protein_g || 0,
+          carbs_g: nutritionData.carbs_g || 0,
+          fat_g: nutritionData.fat_g || 0,
+          fiber_g: nutritionData.fiber_g || 0,
+          description: item.description || '',
+          coach_note: item.coach_note + (nutritionData.confidence_level === 'HIGH' ? '' : ' (Note: Nutrition data has medium/low confidence)'),
+          tags: item.tags,
+          reasoning: item.reasoning,
+          confidence_level: nutritionData.confidence_level,
+          data_source: nutritionData.data_source
+        };
+
+        // Count confidence levels
+        if (nutritionData.confidence_level === 'HIGH') highConfidenceCount++;
+        else if (nutritionData.confidence_level === 'MEDIUM') mediumConfidenceCount++;
+        else lowConfidenceCount++;
+
+        console.log(`✓ Enriched ${item.name} with ${nutritionData.confidence_level} confidence from ${nutritionData.data_source}`);
+      } else {
+        // Fallback with conservative estimates
+        dishItem = {
+          name: item.name,
+          portion: item.portion,
+          kcal: 350, // Higher estimate for restaurant dishes
+          protein_g: 15,
+          carbs_g: 35,
+          fat_g: 12,
+          fiber_g: 4,
+          description: item.description || '',
+          coach_note: item.coach_note + ' (Note: Nutrition data estimated - please verify)',
+          tags: [...item.tags, 'estimated'],
+          reasoning: item.reasoning,
+          confidence_level: 'LOW',
+          data_source: 'AI_ESTIMATED'
+        };
+
+        lowConfidenceCount++;
+        console.log(`⚠️ Using fallback estimates for ${item.name}`);
+      }
+
+      // Place in appropriate bucket
       if (item.bucket === 'Top Picks') {
         analysis.top_picks.push(dishItem);
       } else if (item.bucket === 'Alternates') {
@@ -475,21 +559,30 @@ Output JSON (strict, compatible with app):
       } else if (item.bucket === 'To Avoid') {
         analysis.to_avoid.push(dishItem);
       }
-    });
-
-    // Add overall note if present
-    if (parsedData.overall_note) {
-      analysis.overall_note = parsedData.overall_note;
     }
 
+    // Add overall note if present
+    if (visionData.overall_note) {
+      analysis.overall_note = visionData.overall_note;
+    }
+
+    // Add confidence summary
+    analysis.confidence_summary = {
+      high_confidence_dishes: highConfidenceCount,
+      medium_confidence_dishes: mediumConfidenceCount,
+      low_confidence_dishes: lowConfidenceCount
+    };
+
     const latencyMs = Date.now() - startTime;
+
+    console.log(`✅ Menu analysis complete: ${visionData.items.length} items, ${highConfidenceCount} high confidence, ${mediumConfidenceCount} medium, ${lowConfidenceCount} low`);
 
     return new Response(
       JSON.stringify({ 
         request_id: requestId,
         status: 'success',
         latency_ms: latencyMs,
-        model: 'gemini-2.0-flash',
+        model: 'gemini-2.0-flash + authoritative-nutrition',
         image_px: imagePx,
         json_parse_ok: jsonParseOk,
         analysis: analysis
@@ -498,38 +591,19 @@ Output JSON (strict, compatible with app):
     );
 
   } catch (error) {
-    console.error('Error in menu-parse function:', error);
+    console.error('Menu analysis error:', error);
     const latencyMs = Date.now() - startTime;
-    
-    // Classify error types
-    let errorClass = 'Logic';
-    let statusCode = 500;
-    
-    if (error.message.includes('API key') || error.message.includes('auth')) {
-      errorClass = 'Auth';
-      statusCode = 401;
-    } else if (error.message.includes('rate limit') || error.message.includes('429')) {
-      errorClass = 'RateLimit';
-      statusCode = 429;
-    } else if (error.message.includes('network') || error.message.includes('fetch') || 
-               error.message.includes('temporarily unavailable')) {
-      errorClass = 'Network';
-      statusCode = 503;
-    } else if (error.message.includes('timeout')) {
-      errorClass = 'Network';
-      statusCode = 408;
-    }
-    
+
     return new Response(
       JSON.stringify({ 
         error: error.message,
         request_id: requestId,
-        latency_ms: latencyMs,
-        error_class: errorClass
+        error_class: 'Internal',
+        latency_ms: latencyMs
       }),
-      {
-        status: statusCode,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
   }
