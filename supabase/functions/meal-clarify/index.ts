@@ -62,10 +62,24 @@ serve(async (req) => {
 
     console.log(`🔍 Processing clarification for: ${requestData.dish_name}`);
 
-    // First try to get nutrition from database with clarification context
+    // First, derive a corrected dish name from clarification to avoid bad matches
+    const clarification = requestData.user_clarification?.toLowerCase() || '';
+    const originalName = requestData.dish_name || requestData.original_analysis?.name || '';
+    const hasFrenchBeans = /french\s*beans/.test(clarification);
+    const hasRaita = clarification.includes('raita');
+    const mentionsNot = /\bnot\b/.test(clarification);
+    const baseCorrection = hasRaita
+      ? 'Cucumber Raita'
+      : hasFrenchBeans
+      ? (/aloo|sabzi/i.test(originalName) ? 'French Beans and Aloo Sabzi' : 'French Beans')
+      : '';
+    const correctedQueryName = (baseCorrection || (mentionsNot ? clarification.split(/\bnot\b/)[0].trim() : '') || originalName)
+      .replace(/[.,]+$/, '');
+
+    // Try to get nutrition from database with corrected query name
     const lookupResult = await supabase.functions.invoke('nutrition-lookup', {
-      body: { 
-        dish_name: `${requestData.dish_name} ${requestData.user_clarification}`,
+      body: {
+        dish_name: correctedQueryName,
         portion: requestData.original_analysis.portion,
         cuisine: requestData.bps_profile.cuisines?.[0] || 'indian'
       }
@@ -73,17 +87,31 @@ serve(async (req) => {
 
     let clarifiedDish: ClarifiedDish;
 
-    if (lookupResult.data && lookupResult.data.confidence_level === 'HIGH') {
+    // Detect mismatch: avoid using raw/dried entries when user intends a cooked sabzi/raita
+    const lookupNameLower = (lookupResult.data?.dish_name || lookupResult.data?.name || '').toString().toLowerCase();
+    const targetLower = (baseCorrection || correctedQueryName).toLowerCase();
+    const isRawSeed = lookupNameLower.includes('mature seeds') || lookupNameLower.includes('raw') || lookupNameLower.includes('dry');
+    const targetIsSabziOrRaita = /sabzi|raita/.test(targetLower);
+    const mismatch = isRawSeed && targetIsSabziOrRaita;
+
+    if (lookupResult.data && lookupResult.data.confidence_level === 'HIGH' && !mismatch) {
       // Use database result if high confidence
       const nutrition = lookupResult.data;
       
-      // Prefer canonical name from lookup; otherwise infer from clarification
+      // Prefer the corrected name inferred from clarification; fall back to lookup
       const clarification = requestData.user_clarification?.toLowerCase() || '';
       const lookupName = (lookupResult.data?.dish_name || lookupResult.data?.name || '').toString();
-      const inferredName = clarification.includes('raita') ? 'Cucumber Raita'
+      const inferredName = baseCorrection || (clarification.includes('raita') ? 'Cucumber Raita'
         : clarification.includes('french beans') ? 'French Beans and Aloo Sabzi'
-        : requestData.dish_name;
-      const correctedName = lookupName || inferredName;
+        : requestData.dish_name);
+      const correctedName = inferredName || lookupName || requestData.dish_name;
+
+      const descriptionFromLookup = (lookupResult.data as any)?.description as string | undefined;
+      const defaultDescription = inferredName?.includes('Raita')
+        ? 'Cucumber raita (yogurt with cucumber), lightly seasoned.'
+        : inferredName?.includes('French Beans')
+        ? 'French beans and potato sabzi cooked with Indian spices.'
+        : requestData.original_analysis.description;
       
       clarifiedDish = {
         name: correctedName,
@@ -94,7 +122,7 @@ serve(async (req) => {
         fat_g: Math.round((nutrition.fat_g || 0) * 10) / 10,
         fiber_g: Math.round((nutrition.fiber_g || 0) * 10) / 10,
         sugar_g: Math.round((nutrition.sugar_g || 0) * 10) / 10,
-        description: `${requestData.original_analysis.description} (clarified based on your input)`,
+        description: `${(descriptionFromLookup || defaultDescription)} (clarified based on your input)`,
         coach_note: `Based on your clarification: "${requestData.user_clarification}", this analysis has been updated with more accurate nutrition data.`,
         flags: ['clarified', 'database'],
         confidence_level: 'HIGH',
