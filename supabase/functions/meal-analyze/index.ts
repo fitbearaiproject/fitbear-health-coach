@@ -460,20 +460,64 @@ Output format (strict): Return ONLY valid JSON with this schema:
           visionData = JSON.parse(jsonString);
           jsonParseOk = true;
         } catch (secondParseError) {
-          // Return error with model text for debugging
-          return new Response(
-            JSON.stringify({ 
-              error: 'Failed to parse JSON response from AI model',
-              request_id: requestId,
-              error_class: 'DataContract',
-              model_response: rawResponse.substring(0, 500),
-              latency_ms: Date.now() - startTime
-            }),
-            { 
-              status: 422, 
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          // Fallback: try a compact re-query to ensure JSON closes correctly
+          try {
+            const compactPrompt = `You previously returned an incomplete JSON. Now return ONLY valid, compact JSON with at most 8 dishes. Keep description <= 100 chars and coach_note <= 80 chars. No extra text.`;
+            const compactRes = await retryApiCall(async () => {
+              return await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${googleApiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                signal: AbortSignal.timeout(15000),
+                body: JSON.stringify({
+                  contents: [{
+                    parts: [
+                      { text: compactPrompt },
+                      { text: systemPrompt },
+                      { text: userContext },
+                      { inline_data: { mime_type: 'image/jpeg', data: imageBase64 } }
+                    ]
+                  }],
+                  generationConfig: {
+                    temperature: 0.2,
+                    topK: 30,
+                    topP: 0.8,
+                    maxOutputTokens: 1024,
+                    responseMimeType: 'application/json'
+                  }
+                })
+              });
+            });
+
+            const compactJson = await compactRes.json();
+            const cCand = compactJson?.candidates?.[0];
+            const cParts = cCand?.content?.parts;
+            let cText = '';
+            if (Array.isArray(cParts) && cParts.length) {
+              const t = cParts.find((p: any) => typeof p.text === 'string');
+              cText = t?.text ?? (cParts[0]?.text ?? '');
+            } else if (typeof cCand?.content?.text === 'string') {
+              cText = cCand.content.text;
             }
-          );
+            if (!cText) throw new Error('No compact response');
+
+            visionData = JSON.parse(cText);
+            jsonParseOk = true;
+          } catch (fallbackErr) {
+            // Return error with model text for debugging
+            return new Response(
+              JSON.stringify({ 
+                error: 'Failed to parse JSON response from AI model',
+                request_id: requestId,
+                error_class: 'DataContract',
+                model_response: rawResponse.substring(0, 500),
+                latency_ms: Date.now() - startTime
+              }),
+              { 
+                status: 422, 
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+              }
+            );
+          }
         }
       } else {
         return new Response(
