@@ -97,7 +97,6 @@ serve(async (req) => {
                 encoding: "mp3",
                 sample_rate: 44100
               },
-              language: "en-IN", // Indian English for better pronunciation
               speed: "normal"
             };
 
