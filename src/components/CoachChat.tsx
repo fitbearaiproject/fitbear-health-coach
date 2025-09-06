@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Send, Mic, MicOff, Volume2, VolumeX, MessageCircle, Loader2, User } from "lucide-react";
+import { Send, Mic, MicOff, Volume2, VolumeX, MessageCircle, Loader2, User, Trash2 } from "lucide-react";
 
 interface Message {
   id: string;
@@ -404,8 +404,8 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
         gainNodeRef.current = audioContextRef.current.createGain();
         
         if (selectedVoice === 'clone') {
-          gainNodeRef.current.gain.value = 2.0; // 100% louder (2x amplification)
-          console.log('[Web Audio] Set gain to 2.0 (100% boost) for voice clone');
+          gainNodeRef.current.gain.value = 3.0; // 200% louder (3x amplification)
+          console.log('[Web Audio] Set gain to 3.0 (200% boost) for voice clone');
         } else {
           gainNodeRef.current.gain.value = 1.0; // Normal volume for Hermes
           console.log('[Web Audio] Set gain to 1.0 (normal) for Hermes voice');
@@ -580,6 +580,31 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
     });
   };
 
+  const clearChatHistory = async () => {
+    if (!userId) return;
+    
+    try {
+      const { error } = await supabase.functions.invoke('clear-chat-history', {
+        body: { userId }
+      });
+      
+      if (error) throw error;
+      
+      setMessages([]);
+      toast({
+        title: "Chat Cleared",
+        description: "Your conversation history has been cleared",
+      });
+    } catch (error) {
+      console.error('Error clearing chat:', error);
+      toast({
+        title: "Error",
+        description: "Failed to clear chat history",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -635,6 +660,15 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
               </Select>
               
               <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearChatHistory}
+                  className="text-destructive hover:text-destructive"
+                  title="Clear chat history"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
                 <Button
                   variant={autoSpeak ? "default" : "outline"}
                   size="sm"

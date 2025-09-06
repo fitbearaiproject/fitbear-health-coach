@@ -193,7 +193,7 @@ const { hydrationLogs, todayTotal: waterToday, addWater, removeWater, loadHydrat
     }
   };
 
-  // Load meal logs
+  // Load meal logs with fresh image URLs
   const loadLogs = async () => {
     if (!user) return;
 
@@ -213,7 +213,35 @@ const { hydrationLogs, todayTotal: waterToday, addWater, removeWater, loadHydrat
       if (error) throw error;
 
       const mealLogs = data || [];
-      setLogs(mealLogs);
+      
+      // Generate fresh signed URLs for images
+      const logsWithFreshUrls = await Promise.all(
+        mealLogs.map(async (log) => {
+          if (log.image_url && log.image_url.includes('supabase.co/storage')) {
+            try {
+              // Extract the file path from the existing URL
+              const urlParts = log.image_url.split('/');
+              const bucketIndex = urlParts.findIndex(part => part === 'meal-images');
+              if (bucketIndex !== -1 && urlParts[bucketIndex + 1]) {
+                const filePath = urlParts.slice(bucketIndex + 1).join('/');
+                
+                const { data: signedUrlData } = await supabase.storage
+                  .from('meal-images')
+                  .createSignedUrl(filePath, 3600); // 1 hour expiry
+                
+                if (signedUrlData?.signedUrl) {
+                  return { ...log, image_url: signedUrlData.signedUrl };
+                }
+              }
+            } catch (err) {
+              console.warn('Failed to refresh image URL for log:', log.id, err);
+            }
+          }
+          return log;
+        })
+      );
+      
+      setLogs(logsWithFreshUrls);
 
       // Calculate totals
       const newTotals = mealLogs.reduce((acc, log) => ({
@@ -491,13 +519,27 @@ const { hydrationLogs, todayTotal: waterToday, addWater, removeWater, loadHydrat
                             {dayLogs.map((log) => (
                               <Card key={log.id} className="p-3">
                                 <div className="flex items-start gap-3">
-                                  {log.image_url && (
-                                    <img
-                                      src={log.image_url}
-                                      alt={log.dish_name}
-                                      className="w-12 h-12 object-cover rounded"
-                                    />
-                                  )}
+                                   {log.image_url && (
+                                     <div className="relative w-12 h-12 bg-muted rounded flex items-center justify-center overflow-hidden">
+                                       <img
+                                         src={log.image_url}
+                                         alt={log.dish_name}
+                                         className="w-full h-full object-cover"
+                                         onError={(e) => {
+                                           // Fallback to placeholder icon if image fails to load
+                                           const target = e.target as HTMLImageElement;
+                                           target.style.display = 'none';
+                                           const parent = target.parentElement;
+                                           if (parent && !parent.querySelector('.fallback-icon')) {
+                                             const icon = document.createElement('div');
+                                             icon.className = 'fallback-icon text-muted-foreground text-xs';
+                                             icon.innerHTML = '🍽️';
+                                             parent.appendChild(icon);
+                                           }
+                                         }}
+                                       />
+                                     </div>
+                                   )}
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-start justify-between">
                                       <div>

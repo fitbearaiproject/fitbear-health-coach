@@ -14,6 +14,15 @@ function sanitize(text: string) {
     .replace(/<[^>]+>/g, ' ') // tags
     .replace(/\s+/g, ' ') // collapse whitespace
     .replace(/namaste/gi, '') // Remove "namaste" for Coach C English-only
+    // Add pronunciation hints for Indian English context
+    .replace(/\blassi\b/gi, 'luss-ee')
+    .replace(/\broti\b/gi, 'row-tee')
+    .replace(/\bkatori\b/gi, 'kuh-tor-ee')
+    .replace(/\braita\b/gi, 'rai-ta')
+    .replace(/\bsabzi\b/gi, 'sub-zee')
+    .replace(/\bdal\b/gi, 'dahl')
+    .replace(/\bpapad\b/gi, 'pah-pad')
+    .replace(/\bchapati\b/gi, 'chuh-pah-tee')
     .trim();
 }
 
@@ -88,7 +97,7 @@ serve(async (req) => {
                 encoding: "mp3",
                 sample_rate: 44100
               },
-              language: "en",
+              language: "en-IN", // Indian English for better pronunciation
               speed: "normal"
             };
 
