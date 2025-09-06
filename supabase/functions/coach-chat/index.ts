@@ -109,23 +109,18 @@ serve(async (req) => {
     }
 
     // Coach C system prompt (Short & Human)
-    const systemPrompt = `You are Coach C — a warm, supportive health coach based on Charan Panjwani's Fit Bear philosophy. You speak like a caring friend, not a textbook.
+    const systemPrompt = `You are Coach C — a warm, supportive health coach based on Charan Panjwani's Fit Bear philosophy. Speak like a caring friend, not a textbook.
 
 Core Philosophy:
 • Ahaar (nourishing food), Vihaar (quality rest), Aachaar (good habits), Vichaar (positive mindset)
 • Focus on small, sustainable changes over perfection
 
 Communication Style - CRITICAL:
-• Keep responses SHORT (2-3 sentences maximum)
-• Speak conversationally like a friend
-• Focus on ONE actionable tip at a time
-• Always end with a simple, specific next step
-• Be encouraging, never preachy or academic
-
-Format:
-1. Acknowledge what they shared (1 sentence)
-2. Give ONE practical tip (1 sentence)  
-3. End with a tiny action for today/tomorrow (1 sentence)
+• Keep replies SHORT: 2–3 natural sentences
+• No headings, lists, or labels (never write phrases like "Practical tip:", "Tiny action:", "Action:")
+• Use everyday language (no clinical tone), one specific suggestion max
+• End naturally with a gentle next step in the same sentence (no label)
+• Be encouraging, not preachy
 
 User Context:
 ${userContext}`;
@@ -217,7 +212,8 @@ ${userContext}`;
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
       .replace(/`([^`]+)`/g, '$1')
       .replace(/namaste/gi, '') // Remove "namaste" for Coach C English-only
-      .replace(/<[^>]*>/g, ''); // Remove any HTML/SSML tags
+      .replace(/<[^>]*>/g, '') // Remove any HTML/SSML tags
+      .replace(/\b(?:tiny action|practical tip|tip|action)\s*:\s*/gi, ''); // Strip formal labels
 
     // Log the conversation with diagnostics
     await supabase.from('chat_logs').insert([

@@ -364,17 +364,43 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
           // Set up Web Audio API here when we know the audio is ready
           if (shouldUseClone) {
             try {
-              const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-              const source = audioContext.createMediaElementSource(audio);
-              const gainNode = audioContext.createGain();
-              
-              // Amplify volume by 6x for voice clone (double the previous 3x)
-              gainNode.gain.value = 6.0;
-              
-              source.connect(gainNode);
-              gainNode.connect(audioContext.destination);
-              
-              console.log('Web Audio API setup complete with 3x gain');
+              try {
+                // Create or reuse a single AudioContext for the session
+                const AudioCtx = (window.AudioContext || (window as any).webkitAudioContext);
+                const audioContext = audioContextRef.current ?? new AudioCtx();
+                audioContextRef.current = audioContext;
+                if (audioContext.state === 'suspended') {
+                  audioContext.resume().catch(() => {});
+                }
+
+                // Build nodes
+                const source = audioContext.createMediaElementSource(audio);
+                sourceNodeRef.current = source;
+
+                const gainNode = audioContext.createGain();
+                gainNodeRef.current = gainNode;
+
+                const compressor = audioContext.createDynamicsCompressor();
+                compressorRef.current = compressor;
+                compressor.threshold.value = -18;
+                compressor.knee.value = 24;
+                compressor.ratio.value = 12;
+                compressor.attack.value = 0.003;
+                compressor.release.value = 0.25;
+
+                // Strong amplification for soft clone voices
+                audio.volume = 1.0;
+                gainNode.gain.value = 10.0; // 10x amplification + compressor
+
+                // Connect: source -> gain -> compressor -> destination
+                source.connect(gainNode);
+                gainNode.connect(compressor);
+                compressor.connect(audioContext.destination);
+
+                console.log('Web Audio API setup complete with 10x gain + compressor');
+              } catch (webAudioError) {
+                console.warn('Web Audio API setup failed, playing without amplification:', webAudioError);
+              }
             } catch (webAudioError) {
               console.warn('Web Audio API setup failed, playing without amplification:', webAudioError);
             }
