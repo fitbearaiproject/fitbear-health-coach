@@ -292,7 +292,7 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
 
   const playAudio = async (text: string) => {
     try {
-      setIsPlaying(true);
+      setIsPlayingAudio(true);
       
       let audioUrl = '';
       const shouldUseClone = selectedVoice === 'clone';
@@ -330,13 +330,13 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
               audio.play().catch((retryError) => {
                 console.error('Retry failed:', retryError);
                 if (retryCount === maxRetries) {
-                  setIsPlaying(false);
+                  setIsPlayingAudio(false);
                 }
               });
             }
           }, 1500 * retryCount); // Slightly longer delay
         } else {
-          setIsPlaying(false);
+          setIsPlayingAudio(false);
         }
       };
 
@@ -352,7 +352,7 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
 
       const handleEnded = () => {
         console.log('Audio playback ended');
-        setIsPlaying(false);
+        setIsPlayingAudio(false);
         if (currentAudioRef.current === audio) {
           currentAudioRef.current = null;
         }
@@ -423,167 +423,7 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
 
     } catch (error) {
       console.error('Audio setup error:', error);
-      setIsPlaying(false);
-    }
-  };
-
-    // Set up Web Audio API for volume amplification (only for voice clone)
-    const setupWebAudioPipeline = async () => {
-      try {
-        // Create AudioContext if needed
-        if (!audioContextRef.current) {
-          audioContextRef.current = new AudioContext();
-          console.log('[Web Audio] Created new AudioContext');
-        }
-
-        // Resume AudioContext if suspended (required by browser autoplay policies)
-        if (audioContextRef.current.state === 'suspended') {
-          await audioContextRef.current.resume();
-          console.log('[Web Audio] Resumed AudioContext');
-        }
-
-        // Create MediaElementAudioSourceNode
-        sourceNodeRef.current = audioContextRef.current.createMediaElementSource(audio);
-        console.log('[Web Audio] Created MediaElementSource');
-
-        // Create DynamicsCompressorNode to prevent clipping at high gain
-        compressorRef.current = audioContextRef.current.createDynamicsCompressor();
-        compressorRef.current.threshold.value = -24; // dB
-        compressorRef.current.knee.value = 30; // dB
-        compressorRef.current.ratio.value = 4; // 4:1 compression
-        compressorRef.current.attack.value = 0.003; // 3ms
-        compressorRef.current.release.value = 0.25; // 250ms
-        console.log('[Web Audio] Created and configured DynamicsCompressor');
-
-        // Create GainNode for volume amplification
-        gainNodeRef.current = audioContextRef.current.createGain();
-        
-        if (selectedVoice === 'clone') {
-          gainNodeRef.current.gain.value = 3.0; // 200% louder (3x amplification)
-          console.log('[Web Audio] Set gain to 3.0 (200% boost) for voice clone');
-        } else {
-          gainNodeRef.current.gain.value = 1.0; // Normal volume for Hermes
-          console.log('[Web Audio] Set gain to 1.0 (normal) for Hermes voice');
-        }
-
-        // Connect the audio pipeline: source -> compressor -> gain -> destination
-        sourceNodeRef.current.connect(compressorRef.current);
-        compressorRef.current.connect(gainNodeRef.current);
-        gainNodeRef.current.connect(audioContextRef.current.destination);
-        
-        console.log('[Web Audio] Connected pipeline: source -> compressor -> gain -> destination');
-
-      } catch (error) {
-        console.error('[Web Audio] Failed to setup pipeline:', error);
-        // Fallback to regular audio playback without amplification
-        throw error;
-      }
-    };
-
-    const setupAudioHandlers = () => {
-      audio.onplaying = () => {
-        console.log('[TTS] Audio playing started');
-        setIsPlaying(true);
-      };
-      
-      audio.oncanplay = async () => {
-        console.log('[TTS] Audio can play');
-        
-        // Set up Web Audio pipeline for voice clone amplification
-        if (selectedVoice === 'clone') {
-          try {
-            await setupWebAudioPipeline();
-          } catch (error) {
-            console.warn('[Web Audio] Pipeline setup failed, using standard playback:', error);
-          }
-        }
-      };
-      
-      audio.onended = () => {
-        console.log('[TTS] Audio ended');
-        setIsPlaying(false);
-        cleanupWebAudio();
-        if (currentAudioRef.current === audio) {
-          currentAudioRef.current = null;
-        }
-      };
-      
-      audio.onerror = (e) => {
-        console.error('[TTS] Audio error:', e);
-        setIsPlaying(false);
-        cleanupWebAudio();
-        if (currentAudioRef.current === audio) {
-          currentAudioRef.current = null;
-        }
-
-        // GUARDRAIL: Retry mechanism for transient failures
-        if (retryCount < maxRetries) {
-          retryCount++;
-          console.log(`[TTS] Retrying (${retryCount}/${maxRetries})...`);
-          setTimeout(() => {
-            if (currentAudioRef.current === audio) {
-              audio.load();
-              audio.play().catch(err => console.error('[TTS] Retry failed:', err));
-            }
-          }, 1000 * retryCount);
-        }
-      };
-      
-      audio.onstalled = () => {
-        console.warn('[TTS] Audio stalled, attempting recovery');
-        // GUARDRAIL: Auto-recovery for stalled audio
-        setTimeout(() => {
-          if (currentAudioRef.current === audio && audio.readyState < 3) {
-            audio.load();
-          }
-        }, 2000);
-      };
-      
-      audio.onwaiting = () => console.log('[TTS] Audio waiting for data');
-      
-      audio.onabort = () => {
-        console.log('[TTS] Audio aborted');
-        cleanupWebAudio();
-      };
-      
-      audio.onemptied = () => {
-        console.log('[TTS] Audio emptied');
-        cleanupWebAudio();
-      };
-    };
-
-    setupAudioHandlers();
-    audio.src = streamUrl;
-    
-    // Set volume (this will be further amplified by GainNode for voice clone)
-    if (selectedVoice === 'clone') {
-      audio.volume = 1.0; // Max volume + GainNode amplification
-    } else {
-      audio.volume = 0.8; // Standard volume for Hermes
-    }
-    
-    // GUARDRAIL: Set reference before any async operations
-    currentAudioRef.current = audio;
-
-    try {
-      // GUARDRAIL: Timeout for play() promise to prevent hanging
-      const playPromise = audio.play();
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Play timeout')), 10000)
-      );
-      
-      await Promise.race([playPromise, timeoutPromise]);
-      setIsPlaying(true);
-      console.log('[TTS] Audio play initiated successfully');
-    } catch (e) {
-      console.error('[TTS] Autoplay/playback error:', e);
-      setIsPlaying(false);
-      cleanupWebAudio();
-      
-      // GUARDRAIL: Clean up failed audio attempt
-      if (currentAudioRef.current === audio) {
-        currentAudioRef.current = null;
-      }
+      setIsPlayingAudio(false);
     }
   };
 
