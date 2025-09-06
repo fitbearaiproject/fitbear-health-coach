@@ -368,8 +368,8 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
               const source = audioContext.createMediaElementSource(audio);
               const gainNode = audioContext.createGain();
               
-              // Amplify volume by 3x for voice clone
-              gainNode.gain.value = 3.0;
+              // Amplify volume by 6x for voice clone (double the previous 3x)
+              gainNode.gain.value = 6.0;
               
               source.connect(gainNode);
               gainNode.connect(audioContext.destination);
