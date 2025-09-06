@@ -27,7 +27,7 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(true);
   const [selectedVoice, setSelectedVoice] = useState<'hermes' | 'clone'>(() => {
     return (localStorage.getItem('coach-voice') as 'hermes' | 'clone') || 'hermes';
@@ -291,86 +291,141 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
   };
 
   const playAudio = async (text: string) => {
-    // GUARDRAIL: Input validation
-    if (!text || typeof text !== 'string' || !text.trim()) {
-      console.warn('[TTS] Invalid text input, skipping TTS');
-      return;
-    }
-
-    const sanitizeForTTS = (t: string) =>
-      t
-        .replace(/```[\s\S]*?```/g, '')
-        .replace(/[*_`~>#\[\]()!-]/g, ' ')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-    const SUPABASE_URL = "https://xnncvfuamecmjvvoaywz.supabase.co";
-
-    console.log(`[TTS] Using ${selectedVoice} voice for playback`);
-
-    // GUARDRAIL: Cleanup any ongoing playback and Web Audio nodes to prevent conflicts
-    cleanupWebAudio();
-    if (ttsAbortRef.current) {
-      ttsAbortRef.current.abort();
-      ttsAbortRef.current = null;
-    }
-    if (currentAudioRef.current) {
-      try { 
-        currentAudioRef.current.pause();
-        currentAudioRef.current.src = '';
-        currentAudioRef.current.load();
-      } catch (e) {
-        console.warn('[TTS] Cleanup warning:', e);
-      }
-      currentAudioRef.current = null;
-    }
-    if (ttsObjectUrlRef.current) {
-      try {
-        URL.revokeObjectURL(ttsObjectUrlRef.current);
-      } catch (e) {
-        console.warn('[TTS] URL cleanup warning:', e);
-      }
-      ttsObjectUrlRef.current = null;
-    }
-
-    let clean = sanitizeForTTS(text);
-    
-    // GUARDRAIL: Text length validation (prevent excessive requests)
-    if (clean.length === 0) {
-      console.warn('[TTS] No content after sanitization');
-      return;
-    }
-    if (clean.length > 5000) {
-      console.warn('[TTS] Text too long, truncating to 5000 chars');
-      clean = clean.substring(0, 5000) + '...';
-    }
-
-    console.log('[TTS] streaming start', { originalLen: text.length, cleanLen: clean.length });
-
-    // GUARDRAIL: Robust URL encoding with fallback
-    let encodedText;
     try {
-      encodedText = encodeURIComponent(clean);
-    } catch (e) {
-      console.error('[TTS] URL encoding failed:', e);
-      return;
-    }
+      setIsPlaying(true);
+      
+      let audioUrl = '';
+      const shouldUseClone = selectedVoice === 'clone';
+      
+      if (shouldUseClone) {
+        audioUrl = `https://xnncvfuamecmjvvoaywz.supabase.co/functions/v1/cartesia-tts-stream?text=${encodeURIComponent(text)}&voice_id=bc6b3ad8-7a84-47e2-b655-4a087d2f8c4d`;
+      } else {
+        audioUrl = `https://xnncvfuamecmjvvoaywz.supabase.co/functions/v1/deepgram-tts-stream?text=${encodeURIComponent(text)}&voice=aura-2-hermes-en`;
+      }
 
-    // Choose the appropriate TTS service based on selected voice
-    let streamUrl: string;
-    if (selectedVoice === 'clone') {
-      streamUrl = `${SUPABASE_URL}/functions/v1/cartesia-tts-stream?text=${encodedText}&voice_id=bc6b3ad8-7a84-47e2-b655-4a087d2f8c4d`;
-    } else {
-      streamUrl = `${SUPABASE_URL}/functions/v1/deepgram-tts-stream?text=${encodedText}&voice=aura-2-hermes-en`;
-    }
+      console.log('Attempting to play audio from:', audioUrl);
 
-    // Create audio element with CORS support
-    const audio = new Audio();
-    audio.crossOrigin = "anonymous"; // Enable Web Audio API access
-    audio.preload = 'auto';
-    let retryCount = 0;
-    const maxRetries = 2;
+      // Create a new audio element for this request
+      const audio = new Audio();
+      currentAudioRef.current = audio;
+
+      // Set up event listeners before setting the src
+      let hasStartedPlaying = false;
+      let retryCount = 0;
+      const maxRetries = 2; // Reduced from 3 to 2
+
+      const handleSuccess = () => {
+        console.log('Audio started playing successfully');
+        hasStartedPlaying = true;
+      };
+
+      const handleError = (error: any) => {
+        console.error('Audio playback error:', error);
+        if (!hasStartedPlaying && retryCount < maxRetries) {
+          retryCount++;
+          console.log(`Retrying audio playback (attempt ${retryCount}/${maxRetries})`);
+          setTimeout(() => {
+            if (currentAudioRef.current === audio && !hasStartedPlaying) {
+              // Gentler retry - just try playing again without reload
+              audio.play().catch((retryError) => {
+                console.error('Retry failed:', retryError);
+                if (retryCount === maxRetries) {
+                  setIsPlaying(false);
+                }
+              });
+            }
+          }, 1500 * retryCount); // Slightly longer delay
+        } else {
+          setIsPlaying(false);
+        }
+      };
+
+      const handleLoadError = () => {
+        console.error('Audio load error');
+        handleError('Load failed');
+      };
+
+      const handlePlayError = (e: any) => {
+        console.error('Audio play error:', e);
+        handleError(e);
+      };
+
+      const handleEnded = () => {
+        console.log('Audio playback ended');
+        setIsPlaying(false);
+        if (currentAudioRef.current === audio) {
+          currentAudioRef.current = null;
+        }
+      };
+
+      const handleCanPlayThrough = () => {
+        console.log('Audio can play through - ready for playback');
+        if (!hasStartedPlaying) {
+          // Set up Web Audio API here when we know the audio is ready
+          if (shouldUseClone) {
+            try {
+              const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+              const source = audioContext.createMediaElementSource(audio);
+              const gainNode = audioContext.createGain();
+              
+              // Amplify volume by 3x for voice clone
+              gainNode.gain.value = 3.0;
+              
+              source.connect(gainNode);
+              gainNode.connect(audioContext.destination);
+              
+              console.log('Web Audio API setup complete with 3x gain');
+            } catch (webAudioError) {
+              console.warn('Web Audio API setup failed, playing without amplification:', webAudioError);
+            }
+          }
+        }
+      };
+
+      const handleStalled = () => {
+        console.log('Audio stalled - network issue detected');
+        // Don't automatically reload on stall - this was causing the race condition
+        // Just log it and let the browser handle buffering
+      };
+
+      const handleWaiting = () => {
+        console.log('Audio waiting for more data...');
+        // Let the browser handle buffering naturally
+      };
+
+      // Add event listeners
+      audio.addEventListener('play', handleSuccess);
+      audio.addEventListener('error', handleLoadError);
+      audio.addEventListener('ended', handleEnded);
+      audio.addEventListener('canplaythrough', handleCanPlayThrough);
+      audio.addEventListener('stalled', handleStalled);
+      audio.addEventListener('waiting', handleWaiting);
+
+      // Set the source and configure
+      audio.src = audioUrl;
+      audio.preload = 'auto';
+      audio.crossOrigin = 'anonymous'; // For CORS
+
+      // Start playback after a brief moment to ensure everything is set up
+      setTimeout(async () => {
+        if (currentAudioRef.current === audio) {
+          try {
+            await audio.play();
+            if (!hasStartedPlaying) {
+              handleSuccess();
+            }
+          } catch (playError) {
+            console.error('Initial play failed:', playError);
+            handlePlayError(playError);
+          }
+        }
+      }, 100);
+
+    } catch (error) {
+      console.error('Audio setup error:', error);
+      setIsPlaying(false);
+    }
+  };
 
     // Set up Web Audio API for volume amplification (only for voice clone)
     const setupWebAudioPipeline = async () => {
@@ -567,7 +622,7 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
       ttsObjectUrlRef.current = null;
     }
     
-    setIsPlaying(false);
+    setIsPlayingAudio(false);
     console.log('[TTS] Audio stopped and cleaned up');
   };
 
@@ -634,7 +689,7 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
               <div className="flex flex-wrap gap-2 mt-2">
                 <Badge variant="secondary" className="text-xs">Nutrition Expert</Badge>
                 <Badge variant="secondary" className="text-xs">Wellness Guide</Badge>
-                {isPlaying && <Badge variant="outline" className="text-xs">🔊 Speaking</Badge>}
+                {isPlayingAudio && <Badge variant="outline" className="text-xs">🔊 Speaking</Badge>}
               </div>
             </div>
             <div className="flex flex-col gap-2 md:flex-row">
@@ -677,7 +732,7 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
                 >
                   {autoSpeak ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
                 </Button>
-                {isPlaying && (
+                {isPlayingAudio && (
                   <Button variant="outline" size="sm" onClick={stopAudio}>
                     Stop
                   </Button>

@@ -35,6 +35,12 @@ serve(async (req) => {
   const start = Date.now();
 
   try {
+    // Verify API key exists
+    const apiKey = Deno.env.get('CARTESIA_API_KEY');
+    if (!apiKey) {
+      throw new Error('CARTESIA_API_KEY environment variable is not set');
+    }
+
     const url = new URL(req.url);
     let text: string | undefined;
     let voiceId: string | undefined;
@@ -97,6 +103,7 @@ serve(async (req) => {
                 encoding: "mp3",
                 sample_rate: 44100
               },
+              language: "en", // Standard English per Cartesia docs
               speed: "normal"
             };
 
@@ -105,8 +112,8 @@ serve(async (req) => {
             const upstream = await fetch('https://api.cartesia.ai/tts/bytes', {
               method: 'POST',
               headers: {
-                'Cartesia-Version': '2024-06-10',
-                'X-API-Key': Deno.env.get('CARTESIA_API_KEY'),
+                'Authorization': `Bearer ${apiKey}`, // Use Bearer format per docs
+                'Cartesia-Version': '2025-04-16', // Latest stable version from docs
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify(requestBody),
@@ -121,19 +128,39 @@ serve(async (req) => {
             console.log(`[Cartesia TTS] Successfully received audio for chunk`);
 
             const reader = upstream.body?.getReader();
-            if (!reader) continue;
+            if (!reader) {
+              console.warn(`[Cartesia TTS] No reader available for chunk`);
+              continue;
+            }
             
-            while (true) {
-              const { value, done } = await reader.read();
-              if (done) break;
-              if (value) controller.enqueue(value);
+            try {
+              while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                if (value && value.length > 0) {
+                  controller.enqueue(value);
+                }
+              }
+            } catch (e) {
+              console.error(`[Cartesia TTS] Reader error for chunk:`, e);
+              throw e;
+            } finally {
+              try {
+                reader.releaseLock();
+              } catch {}
             }
           }
+          
+          console.log(`[Cartesia TTS] All chunks processed, closing stream`);
           controller.close();
           console.log(`[Cartesia TTS] Stream completed in ${Date.now() - start}ms`);
         } catch (e) {
           console.error('[Cartesia TTS] Stream error:', e);
-          try { controller.error(e); } catch {}
+          try { 
+            controller.error(e); 
+          } catch (closeError) {
+            console.error('[Cartesia TTS] Error closing controller:', closeError);
+          }
         }
       }
     });

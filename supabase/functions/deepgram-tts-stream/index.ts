@@ -26,6 +26,12 @@ serve(async (req) => {
   const start = Date.now();
 
   try {
+    // Verify API key exists
+    const apiKey = Deno.env.get('DEEPGRAM_API_KEY');
+    if (!apiKey) {
+      throw new Error('DEEPGRAM_API_KEY environment variable is not set');
+    }
+
     const url = new URL(req.url);
     let text: string | undefined;
     let voice: string | undefined;
@@ -78,10 +84,12 @@ serve(async (req) => {
               encoding: 'mp3',
             }).toString();
 
+            console.log(`[Deepgram TTS] Requesting chunk: "${part.substring(0, 50)}..."`);
+
             const upstream = await fetch(`https://api.deepgram.com/v1/speak?${query}`, {
               method: 'POST',
               headers: {
-                'Authorization': `Token ${Deno.env.get('DEEPGRAM_API_KEY')}`,
+                'Authorization': `Token ${apiKey}`,
                 'Content-Type': 'application/json',
                 'Accept': 'audio/mpeg',
               },
@@ -90,20 +98,46 @@ serve(async (req) => {
 
             if (!upstream.ok) {
               const errText = await upstream.text().catch(() => '');
+              console.error(`[Deepgram TTS] Error (${upstream.status}): ${errText}`);
               throw new Error(`Deepgram TTS error (${upstream.status}): ${errText}`);
             }
 
+            console.log(`[Deepgram TTS] Successfully received audio for chunk`);
+
             const reader = upstream.body?.getReader();
-            if (!reader) continue;
-            while (true) {
-              const { value, done } = await reader.read();
-              if (done) break;
-              if (value) controller.enqueue(value);
+            if (!reader) {
+              console.warn(`[Deepgram TTS] No reader available for chunk`);
+              continue;
+            }
+            
+            try {
+              while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                if (value && value.length > 0) {
+                  controller.enqueue(value);
+                }
+              }
+            } catch (e) {
+              console.error(`[Deepgram TTS] Reader error for chunk:`, e);
+              throw e;
+            } finally {
+              try {
+                reader.releaseLock();
+              } catch {}
             }
           }
+          
+          console.log(`[Deepgram TTS] All chunks processed, closing stream`);
           controller.close();
+          console.log(`[Deepgram TTS] Stream completed in ${Date.now() - start}ms`);
         } catch (e) {
-          try { controller.error(e); } catch {}
+          console.error('[Deepgram TTS] Stream error:', e);
+          try { 
+            controller.error(e); 
+          } catch (closeError) {
+            console.error('[Deepgram TTS] Error closing controller:', closeError);
+          }
         }
       }
     });
