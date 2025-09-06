@@ -49,17 +49,17 @@ const ACTIVITY_LEVELS = [{
   value: 'sedentary',
   label: 'Sedentary (little/no exercise)'
 }, {
-  value: 'lightly_active',
-  label: 'Lightly Active (light exercise 1-3 days/week)'
+  value: 'light',
+  label: 'Light Activity (light exercise 1-3 days/week)'
 }, {
-  value: 'moderately_active',
-  label: 'Moderately Active (moderate exercise 3-5 days/week)'
+  value: 'moderate',
+  label: 'Moderate Activity (moderate exercise 3-5 days/week)'
 }, {
-  value: 'very_active',
+  value: 'active',
   label: 'Very Active (hard exercise 6-7 days/week)'
 }, {
-  value: 'extremely_active',
-  label: 'Extremely Active (very hard exercise/training)'
+  value: 'athlete',
+  label: 'Athlete Level (very hard exercise/training)'
 }];
 const STRESS_LEVELS = [{
   value: 'low',
@@ -158,8 +158,8 @@ export default function Profile() {
         height_cm: profile.height_cm,
         weight_kg: profile.weight_kg,
         diet: profile.diet_type as any,
-        // Map to the correct field
-        activity_level: profile.activity_level,
+        // Map to the correct field and ensure it matches DB constraint
+        activity_level: profile.activity_level || null,
         health_goals: profile.health_goals,
         conditions: profile.conditions,
         allergies: profile.allergies,

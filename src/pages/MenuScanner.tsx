@@ -193,10 +193,10 @@ export default function MenuScanner() {
     setDiagnostics(null);
 
     const bps_profile = {
-      diet_type: userProfile.diet_type,
+      diet_type: userProfile.diet_type || userProfile.diet || 'omnivore',
       conditions: userProfile.conditions || [],
-      activity_level: userProfile.activity_level,
-      health_goals: userProfile.health_goals,
+      activity_level: userProfile.activity_level || 'moderate',
+      health_goals: userProfile.health_goals || '',
       allergies: userProfile.allergies || [],
       cuisines: userProfile.cuisines || []
     };
