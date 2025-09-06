@@ -46,6 +46,11 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
   const gainNodeRef = useRef<GainNode | null>(null);
   const compressorRef = useRef<DynamicsCompressorNode | null>(null);
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const preGainRef = useRef<GainNode | null>(null);
+  const postGainRef = useRef<GainNode | null>(null);
+  const eqPresenceRef = useRef<BiquadFilterNode | null>(null);
+  const eqHighShelfRef = useRef<BiquadFilterNode | null>(null);
+  const limiterRef = useRef<DynamicsCompressorNode | null>(null);
 
   useEffect(() => {
     scrollToBottom();
@@ -83,7 +88,53 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
       sourceNodeRef.current = null;
     }
     
-    // Clear gain node
+    // Clear pre-gain
+    if (preGainRef.current) {
+      try {
+        preGainRef.current.disconnect();
+      } catch (e) {
+        console.warn('[Web Audio] PreGain disconnect warning:', e);
+      }
+      preGainRef.current = null;
+    }
+
+    // Clear EQ nodes
+    if (eqPresenceRef.current) {
+      try {
+        eqPresenceRef.current.disconnect();
+      } catch (e) {
+        console.warn('[Web Audio] EQ Presence disconnect warning:', e);
+      }
+      eqPresenceRef.current = null;
+    }
+    if (eqHighShelfRef.current) {
+      try {
+        eqHighShelfRef.current.disconnect();
+      } catch (e) {
+        console.warn('[Web Audio] EQ HighShelf disconnect warning:', e);
+      }
+      eqHighShelfRef.current = null;
+    }
+    
+    // Clear compressor/limiter
+    if (compressorRef.current) {
+      try {
+        compressorRef.current.disconnect();
+      } catch (e) {
+        console.warn('[Web Audio] Compressor disconnect warning:', e);
+      }
+      compressorRef.current = null;
+    }
+    if (limiterRef.current) {
+      try {
+        limiterRef.current.disconnect();
+      } catch (e) {
+        console.warn('[Web Audio] Limiter disconnect warning:', e);
+      }
+      limiterRef.current = null;
+    }
+    
+    // Clear post-gain
     if (gainNodeRef.current) {
       try {
         gainNodeRef.current.disconnect();
@@ -92,15 +143,13 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
       }
       gainNodeRef.current = null;
     }
-    
-    // Clear compressor node
-    if (compressorRef.current) {
+    if (postGainRef.current) {
       try {
-        compressorRef.current.disconnect();
+        postGainRef.current.disconnect();
       } catch (e) {
-        console.warn('[Web Audio] Compressor disconnect warning:', e);
+        console.warn('[Web Audio] PostGain disconnect warning:', e);
       }
-      compressorRef.current = null;
+      postGainRef.current = null;
     }
     
     // Close audio context
@@ -298,6 +347,8 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
       const shouldUseClone = selectedVoice === 'clone';
       
       if (shouldUseClone) {
+        // Ensure any previous nodes are torn down so we can rebuild a fresh, louder chain
+        cleanupWebAudio();
         audioUrl = `https://xnncvfuamecmjvvoaywz.supabase.co/functions/v1/cartesia-tts-stream?text=${encodeURIComponent(text)}&voice_id=bc6b3ad8-7a84-47e2-b655-4a087d2f8c4d`;
       } else {
         audioUrl = `https://xnncvfuamecmjvvoaywz.supabase.co/functions/v1/deepgram-tts-stream?text=${encodeURIComponent(text)}&voice=aura-2-hermes-en`;
@@ -373,31 +424,69 @@ export const CoachChat = ({ userId }: CoachChatProps) => {
                   audioContext.resume().catch(() => {});
                 }
 
+                // Prevent double-connecting the same media element
+                if (sourceNodeRef.current) {
+                  console.log('[Web Audio] Chain already initialized for this playback');
+                  return;
+                }
+
                 // Build nodes
                 const source = audioContext.createMediaElementSource(audio);
                 sourceNodeRef.current = source;
 
-                const gainNode = audioContext.createGain();
-                gainNodeRef.current = gainNode;
+                const preGain = audioContext.createGain();
+                preGain.gain.value = 8.0; // hit the dynamics harder
+                preGainRef.current = preGain;
+                gainNodeRef.current = preGain; // backward compat
+
+                const eqPresence = audioContext.createBiquadFilter();
+                eqPresence.type = 'peaking';
+                eqPresence.frequency.value = 3000; // speech intelligibility band
+                eqPresence.Q.value = 1.0;
+                eqPresence.gain.value = 7.0; // +7 dB
+                eqPresenceRef.current = eqPresence;
+
+                const eqHigh = audioContext.createBiquadFilter();
+                eqHigh.type = 'highshelf';
+                eqHigh.frequency.value = 4500;
+                eqHigh.gain.value = 4.0; // gentle shimmer for clarity
+                eqHighShelfRef.current = eqHigh;
 
                 const compressor = audioContext.createDynamicsCompressor();
-                compressorRef.current = compressor;
-                compressor.threshold.value = -18;
-                compressor.knee.value = 24;
+                compressor.threshold.value = -22;
+                compressor.knee.value = 30;
                 compressor.ratio.value = 12;
-                compressor.attack.value = 0.003;
-                compressor.release.value = 0.25;
+                compressor.attack.value = 0.002;
+                compressor.release.value = 0.2;
+                compressorRef.current = compressor;
+
+                // Brickwall-like limiter
+                const limiter = audioContext.createDynamicsCompressor();
+                limiter.threshold.value = -8;
+                limiter.knee.value = 0;
+                limiter.ratio.value = 20;
+                limiter.attack.value = 0.001;
+                limiter.release.value = 0.1;
+                limiterRef.current = limiter;
+
+                const postGain = audioContext.createGain();
+                postGain.gain.value = 4.0; // final loudness boost
+                postGainRef.current = postGain;
 
                 // Strong amplification for soft clone voices
                 audio.volume = 1.0;
-                gainNode.gain.value = 10.0; // 10x amplification + compressor
+                audio.muted = false;
 
-                // Connect: source -> gain -> compressor -> destination
-                source.connect(gainNode);
-                gainNode.connect(compressor);
-                compressor.connect(audioContext.destination);
+                // Connect: source -> preGain -> eqPresence -> eqHigh -> compressor -> limiter -> postGain -> destination
+                source.connect(preGain);
+                preGain.connect(eqPresence);
+                eqPresence.connect(eqHigh);
+                eqHigh.connect(compressor);
+                compressor.connect(limiter);
+                limiter.connect(postGain);
+                postGain.connect(audioContext.destination);
 
-                console.log('Web Audio API setup complete with 10x gain + compressor');
+                console.log('Web Audio API setup: pre/post gain + EQ + compressor + limiter (very loud)');
               } catch (webAudioError) {
                 console.warn('Web Audio API setup failed, playing without amplification:', webAudioError);
               }
